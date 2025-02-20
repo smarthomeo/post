@@ -47,7 +47,7 @@ if not os.path.exists(session_dir):
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = session_dir
 app.config['SESSION_COOKIE_NAME'] = 'session'
-app.config['SESSION_COOKIE_DOMAIN'] = '159.223.105.44'  # Explicit domain
+app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain in development
 app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when using HTTPS
@@ -55,6 +55,10 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More compatible than 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 app.secret_key = os.getenv('JWT_SECRET', 'your-secret-key')
+
+# Override domain in production
+if os.getenv('FLASK_ENV') == 'production':
+    app.config['SESSION_COOKIE_DOMAIN'] = '159.223.105.44'
 
 Session(app)
 
