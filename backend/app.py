@@ -45,25 +45,70 @@ if not os.path.exists(session_dir):
 
 # Configure session
 app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True if using HTTPS
+app.config['SESSION_FILE_DIR'] = session_dir
+app.config['SESSION_COOKIE_NAME'] = 'session'
+app.config['SESSION_COOKIE_DOMAIN'] = '159.223.105.44'  # Explicit domain
+app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when using HTTPS
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More compatible than 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
-app.config['SESSION_COOKIE_DOMAIN'] = None  # Allow cookies to work across subdomains
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+app.secret_key = os.getenv('JWT_SECRET', 'your-secret-key')
+
 Session(app)
 
 # Configure CORS
-CORS(app, 
-     supports_credentials=True,
+allowed_origins = [
+    'http://localhost:5173',  # Development frontend
+    'http://159.223.105.44',  # Production frontend
+    'http://159.223.105.44:5173',  # Production frontend with port
+    'http://159.223.105.44:5000'  # Production backend
+]
+
+CORS(app,
      resources={
          r"/api/*": {
-             "origins": ['http://159.223.105.44', os.getenv('FRONTEND_URL', 'http://localhost:5173')],
+             "origins": allowed_origins,
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization"],
-             "expose_headers": ["Set-Cookie"],
-             "supports_credentials": True
+             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+             "expose_headers": ["Content-Type", "Authorization", "Set-Cookie"],
+             "supports_credentials": True,
+             "send_wildcard": False,
+             "max_age": 86400
          }
-     })
+     },
+     supports_credentials=True)
+
+# Add CORS headers to all responses
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
+        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
+        response.headers['Access-Control-Max-Age'] = '86400'
+        
+        # Debug logging for CORS and cookies
+        print(f"=== Response Headers ===")
+        print(f"Origin: {origin}")
+        print(f"Headers: {dict(response.headers)}")
+        if 'Set-Cookie' in response.headers:
+            print(f"Cookies being set: {response.headers.getlist('Set-Cookie')}")
+    
+    return response
+
+# Add OPTIONS handlers for the admin routes
+@app.route('/api/admin/transactions/pending', methods=['OPTIONS'])
+def transactions_options():
+    return '', 200
+
+@app.route('/api/admin/verifications/pending', methods=['OPTIONS'])
+def verifications_options():
+    return '', 200
 
 # MongoDB connection with retry
 def connect_to_mongodb():
@@ -139,8 +184,14 @@ FOREX_REFERRAL_REWARDS = {
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        print(f"Session data in login_required: {dict(session)}")
+        print(f"Request cookies: {request.cookies}")
+        
         if 'user_id' not in session:
+            print("No user_id in session")
             return jsonify({'error': 'Unauthorized', 'message': 'Please log in'}), 401
+            
+        print(f"Found user_id in session: {session['user_id']}")
         return f(*args, **kwargs)
     return decorated_function
 
@@ -395,6 +446,10 @@ def calculate_daily_roi_earnings():
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            response = app.make_default_options_response()
+            return response
+            
         if 'user_id' not in session:
             return jsonify({'error': 'Authentication required'}), 401
             
@@ -409,7 +464,8 @@ def admin_required(f):
 @admin_required
 def get_pending_transactions():
     if request.method == 'OPTIONS':
-        return '', 200
+        response = app.make_default_options_response()
+        return response
     
     try:
         # Get all pending transactions with user details
@@ -459,7 +515,8 @@ def get_pending_transactions():
             }
             formatted_transactions.append(formatted_transaction)
             
-        return jsonify({'transactions': formatted_transactions})
+        response = jsonify({'transactions': formatted_transactions})
+        return response
     except Exception as e:
         print(f"Error fetching pending transactions: {str(e)}")
         return jsonify({'error': 'Failed to fetch pending transactions'}), 500
@@ -468,7 +525,8 @@ def get_pending_transactions():
 @admin_required
 def get_pending_verifications():
     if request.method == 'OPTIONS':
-        return '', 200
+        response = app.make_default_options_response()
+        return response
         
     try:
         # Get users pending verification
@@ -496,7 +554,8 @@ def get_pending_verifications():
                 formatted_user['referredBy'] = str(user['referredBy'])
             formatted_users.append(formatted_user)
             
-        return jsonify({'verifications': formatted_users})
+        response = jsonify({'verifications': formatted_users})
+        return response
     except Exception as e:
         print(f"Error fetching pending verifications: {str(e)}")
         return jsonify({'error': 'Failed to fetch pending verifications'}), 500
@@ -651,7 +710,10 @@ def register():
 def login():
     try:
         data = request.get_json()
-        print("Login attempt data:", data)
+        print("\n=== Login Request ===")
+        print(f"Request Headers: {dict(request.headers)}")
+        print(f"Request Origin: {request.headers.get('Origin')}")
+        print(f"Initial Session: {dict(session)}")
         
         phone = data.get('phone')
         password = data.get('password')
@@ -661,29 +723,26 @@ def login():
             return jsonify({'error': 'Phone and password are required'}), 400
 
         try:
-            # Find user by phone
             user = db.users.find_one({'phone': phone})
             print(f"Found user: {user is not None}")
         except Exception as db_error:
-            print(f"Database error while finding user: {str(db_error)}")
-            return jsonify({'error': 'Database error', 'details': str(db_error)}), 500
+            print(f"Database error: {str(db_error)}")
+            return jsonify({'error': 'Database error'}), 500
 
         if not user:
             return jsonify({'error': 'Invalid credentials'}), 401
 
-        # Check if password is bytes, if not convert it
         stored_password = user.get('password')
         if not stored_password:
-            print("User has no password set")
+            print("No password set")
             return jsonify({'error': 'Invalid credentials'}), 401
 
         if isinstance(stored_password, str):
             stored_password = stored_password.encode('utf-8')
 
-        # Check password
         try:
             password_matches = bcrypt.checkpw(password.encode('utf-8'), stored_password)
-            print(f"Password check result: {password_matches}")
+            print(f"Password check: {password_matches}")
         except Exception as e:
             print(f"Password check error: {str(e)}")
             return jsonify({'error': 'Invalid credentials'}), 401
@@ -691,56 +750,60 @@ def login():
         if not password_matches:
             return jsonify({'error': 'Invalid credentials'}), 401
 
-        # Set session
         try:
+            session.clear()
             session['user_id'] = str(user['_id'])
             session.permanent = True
-            print(f"Session set with user_id: {session.get('user_id')}")
+            print("\n=== Session After Login ===")
+            print(f"Session data: {dict(session)}")
+            print(f"Session ID: {session.sid if hasattr(session, 'sid') else 'No SID'}")
         except Exception as session_error:
             print(f"Session error: {str(session_error)}")
-            return jsonify({'error': 'Session error', 'details': str(session_error)}), 500
+            return jsonify({'error': 'Session error'}), 500
 
-        # Remove password from user object
-        try:
-            user_response = {
-                '_id': str(user['_id']),
-                'username': user.get('username'),
-                'phone': user.get('phone'),
-                'balance': user.get('balance', 0),
-                'referralCode': user.get('referralCode'),
-                'isActive': user.get('isActive', True),
-                'isAdmin': user.get('isAdmin', False),
-                'createdAt': user.get('createdAt'),
-                'updatedAt': user.get('updatedAt')
-            }
-        except Exception as resp_error:
-            print(f"Error preparing response: {str(resp_error)}")
-            return jsonify({'error': 'Error preparing response', 'details': str(resp_error)}), 500
+        user_response = {
+            '_id': str(user['_id']),
+            'username': user.get('username'),
+            'phone': user.get('phone'),
+            'balance': user.get('balance', 0),
+            'referralCode': user.get('referralCode'),
+            'isAdmin': user.get('isAdmin', False),
+            'isActive': user.get('isActive', True),
+            'createdAt': user.get('createdAt'),
+            'updatedAt': user.get('updatedAt')
+        }
 
-        print("Login successful, returning user data")
-        return jsonify({
+        response = jsonify({
             'message': 'Login successful',
             'user': user_response
-        }), 200
+        })
+
+        print("\n=== Final Response ===")
+        print(f"Response Headers: {dict(response.headers)}")
+        return response
 
     except Exception as e:
         import traceback
         print(f"Login error: {str(e)}")
         print("Traceback:", traceback.format_exc())
-        return jsonify({'error': 'An error occurred during login', 'details': str(e)}), 500
+        return jsonify({'error': 'Login failed'}), 500
 
 @app.route('/api/auth/verify', methods=['GET'])
 @login_required
 def verify():
     try:
+        print("\n=== Verify Request ===")
+        print(f"Request Headers: {dict(request.headers)}")
+        print(f"Request Cookies: {request.cookies}")
+        print(f"Session Data: {dict(session)}")
+        
         user_id = session.get('user_id')
-        print(f"Verify attempt for user_id: {user_id}")
+        print(f"User ID from session: {user_id}")
         
         if not user_id:
             print("No user_id in session")
             return jsonify({'error': 'Unauthorized'}), 401
 
-        # Find user by ID
         user = db.users.find_one({'_id': ObjectId(user_id)})
         print(f"Found user: {user is not None}")
 
@@ -748,7 +811,6 @@ def verify():
             print("User not found in database")
             return jsonify({'error': 'User not found'}), 401
 
-        # Remove password from user object
         user_response = {
             '_id': str(user['_id']),
             'username': user.get('username'),
@@ -761,14 +823,16 @@ def verify():
             'updatedAt': user.get('updatedAt')
         }
 
-        print("Verify successful, returning user data")
-        return jsonify({'user': user_response}), 200
+        response = jsonify({'user': user_response})
+        print("\n=== Verify Response ===")
+        print(f"Response Headers: {dict(response.headers)}")
+        return response
 
     except Exception as e:
         import traceback
         print(f"Verify error: {str(e)}")
         print("Traceback:", traceback.format_exc())
-        return jsonify({'error': 'An error occurred during verification'}), 500
+        return jsonify({'error': 'Verification failed'}), 500
 
 # User routes
 @app.route('/api/users/profile', methods=['PUT'])
