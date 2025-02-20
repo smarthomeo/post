@@ -230,6 +230,9 @@ def calculate_referral_earnings(user_id):
 def calculate_daily_referral_commissions():
     """Calculate and distribute daily commissions based on referred users' investment earnings"""
     try:
+        print("\n=== Starting Daily Commission Calculation ===")
+        print(f"Time: {datetime.utcnow()}")
+        
         # Get current commission rates
         commission_rates = db.commission_rates.find_one({}, sort=[('created_at', -1)])
         if not commission_rates:
@@ -237,26 +240,30 @@ def calculate_daily_referral_commissions():
             return
             
         daily_rates = commission_rates['daily_commission']
+        print(f"Commission rates: {daily_rates}")
         
         # Get today's date (UTC)
         current_time = datetime.utcnow()
         today_start = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
         
-        print(f"Starting daily commission calculation for {current_time.date()}")
+        print(f"Calculating commissions for date: {current_time.date()}")
         
-        # Get all investment history entries from today (these are the actual ROI earnings)
-        today_earnings = db.investment_history.find({
+        # Get all investment history entries from today
+        today_earnings = list(db.investment_history.find({
             'type': 'roi_earning',
             'date': current_time.date().isoformat()
-        })
+        }))
+        print(f"Found {len(today_earnings)} ROI earnings for today")
         
-        # Track processed commissions to avoid duplicates
+        # Track processed commissions
         processed_commissions = set()
+        total_commissions = {'level1': 0, 'level2': 0, 'level3': 0}
         
         for earning in today_earnings:
             try:
                 user_id = earning['userId']
-                daily_roi_earnings = earning['amount']  # This is the actual ROI earned
+                daily_roi_earnings = earning['amount']
+                print(f"\nProcessing ROI earning: {daily_roi_earnings} for user {user_id}")
                 
                 # Get user's referral chain
                 user = db.users.find_one({'_id': user_id})
@@ -369,7 +376,12 @@ def calculate_daily_referral_commissions():
                 print(f"Error processing commission for earning {earning.get('_id')}: {str(e)}")
                 continue
         
-        print(f"Daily commission calculation completed for {current_time.date()}")
+        print("\n=== Commission Calculation Summary ===")
+        print(f"Total Level 1 Commissions: {total_commissions['level1']}")
+        print(f"Total Level 2 Commissions: {total_commissions['level2']}")
+        print(f"Total Level 3 Commissions: {total_commissions['level3']}")
+        print(f"Total Commissions: {sum(total_commissions.values())}")
+        print("=== Daily Commission Calculation Completed ===\n")
         
     except Exception as e:
         print(f"Error calculating daily commissions: {str(e)}")
@@ -378,18 +390,23 @@ def calculate_daily_referral_commissions():
 def calculate_daily_roi_earnings():
     """Calculate and distribute daily ROI earnings for all active investments (weekdays only)"""
     try:
+        print("\n=== Starting Daily ROI Calculation ===")
         current_time = datetime.utcnow()
+        print(f"Time: {current_time}")
         
-        # Check if it's a weekend (5 = Saturday, 6 = Sunday)
+        # Check if it's a weekend
         if current_time.weekday() in [5, 6]:
             print(f"Skipping ROI calculation for {current_time.date()} as it's a weekend")
             return
             
-        print(f"Starting daily ROI calculation for {current_time.date()}")
+        print(f"Calculating ROI for date: {current_time.date()}")
         
         # Get all active investments
         active_investments = list(db.investments.find({'status': 'active'}))
-        print(f"Processing {len(active_investments)} active investments")
+        print(f"Found {len(active_investments)} active investments")
+        
+        total_roi = 0
+        processed_count = 0
         
         for investment in active_investments:
             try:
@@ -402,8 +419,11 @@ def calculate_daily_roi_earnings():
                 # Calculate today's earnings
                 daily_earnings = amount * (daily_roi / 100)
                 new_profit = current_profit + daily_earnings
+                total_roi += daily_earnings
+                processed_count += 1
                 
-                print(f"Investment {investment['_id']}: Amount={amount}, ROI={daily_roi}%, Earnings={daily_earnings}")
+                print(f"\nProcessing investment {investment['_id']}:")
+                print(f"Amount: {amount}, ROI: {daily_roi}%, Earnings: {daily_earnings}")
                 
                 # Update investment profit
                 db.investments.update_one(
@@ -439,7 +459,10 @@ def calculate_daily_roi_earnings():
                 print(f"Error processing investment {investment.get('_id')}: {str(inv_error)}")
                 continue
         
-        print(f"Daily ROI calculation completed for {current_time.date()}")
+        print("\n=== ROI Calculation Summary ===")
+        print(f"Processed {processed_count} investments")
+        print(f"Total ROI distributed: {total_roi}")
+        print("=== Daily ROI Calculation Completed ===\n")
         return True
         
     except Exception as e:
