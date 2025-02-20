@@ -43,13 +43,13 @@ function TransactionTable({ transactions }: TransactionTableProps) {
     });
     
     return (
-      <div className="flex items-center">
+      <div className="flex items-center gap-1">
         {type === 'deposit' || type === 'profit' ? (
-          <ArrowUpIcon className="w-4 h-4 mr-1 text-green-500" />
+          <ArrowUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500 flex-shrink-0" />
         ) : (
-          <ArrowDownIcon className="w-4 h-4 mr-1 text-red-500" />
+          <ArrowDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500 flex-shrink-0" />
         )}
-        {formattedAmount}
+        <span className="truncate">{formattedAmount}</span>
       </div>
     );
   };
@@ -60,7 +60,7 @@ function TransactionTable({ transactions }: TransactionTableProps) {
       const date = new Date(dateString);
       if (isNaN(date.getTime())) return 'N/A';
 
-      return new Intl.DateTimeFormat('en-KE', {
+      const options: Intl.DateTimeFormatOptions = {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -68,7 +68,16 @@ function TransactionTable({ transactions }: TransactionTableProps) {
         minute: '2-digit',
         hour12: true,
         timeZone: 'Africa/Nairobi'
-      }).format(date);
+      };
+
+      // Use a more compact format for mobile
+      if (window.innerWidth < 640) {
+        options.year = '2-digit';
+        delete options.hour;
+        delete options.minute;
+      }
+
+      return new Intl.DateTimeFormat('en-KE', options).format(date);
     } catch (error) {
       console.error('Date formatting error:', error);
       return 'N/A';
@@ -77,49 +86,49 @@ function TransactionTable({ transactions }: TransactionTableProps) {
 
   if (!transactions.length) {
     return (
-      <div className="rounded-lg border p-8 text-center">
-        <p className="text-muted-foreground">No transactions yet</p>
+      <div className="w-full rounded-lg border p-4 sm:p-6 text-center">
+        <p className="text-sm sm:text-base text-muted-foreground">No transactions yet</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="w-full overflow-x-auto -mx-4 sm:mx-0">
+      <div className="min-w-full align-middle">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="whitespace-nowrap text-xs sm:text-sm">Type</TableHead>
-              <TableHead className="whitespace-nowrap text-xs sm:text-sm">Amount</TableHead>
-              <TableHead className="whitespace-nowrap text-xs sm:text-sm">Status</TableHead>
-              <TableHead className="whitespace-nowrap text-xs sm:text-sm hidden md:table-cell">Description</TableHead>
-              <TableHead className="whitespace-nowrap text-xs sm:text-sm">Date</TableHead>
+              <TableHead className="w-[100px] hidden sm:table-cell">Date</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="hidden sm:table-cell">Description</TableHead>
+              <TableHead className="text-right">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {transactions.map((transaction) => (
               <TableRow key={transaction._id}>
-                <TableCell className="font-medium capitalize whitespace-nowrap text-xs sm:text-sm py-2 sm:py-4">
+                <TableCell className="hidden sm:table-cell">
+                  {formatDate(transaction.createdAt)}
+                </TableCell>
+                <TableCell className="font-medium capitalize">
                   {transaction.type}
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-xs sm:text-sm py-2 sm:py-4">
-                  {formatAmount(transaction.amount, transaction.type)}
+                <TableCell className="text-right">
+                  <span className={transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}>
+                    {formatAmount(transaction.amount, transaction.type)}
+                  </span>
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-xs sm:text-sm py-2 sm:py-4">
+                <TableCell className="hidden sm:table-cell text-muted-foreground">
+                  {transaction.description}
+                </TableCell>
+                <TableCell className="text-right">
                   <Badge 
-                    className={`${getStatusColor(transaction.status)} border`}
+                    className={`${getStatusColor(transaction.status)} text-[10px] sm:text-xs px-1.5 py-0.5 whitespace-nowrap`}
                     variant="outline"
                   >
                     {transaction.status}
                   </Badge>
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-xs sm:text-sm py-2 sm:py-4 hidden md:table-cell">
-                  <span className="block truncate max-w-[200px]" title={transaction.description}>
-                    {transaction.description}
-                  </span>
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-xs sm:text-sm py-2 sm:py-4">
-                  {formatDate(transaction.createdAt)}
                 </TableCell>
               </TableRow>
             ))}

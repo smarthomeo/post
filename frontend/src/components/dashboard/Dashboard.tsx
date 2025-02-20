@@ -1,208 +1,279 @@
 import { useEffect, useState } from 'react';
-import { userApi, transactionApi, investmentApi } from '@/services/api';
-import BalanceCard from './BalanceCard';
-import TransactionTable from './TransactionTable';
-import PortfolioChart from './PortfolioChart';
-import QuickActions from './QuickActions';
+import { userApi, transactionApi, investmentApi, referralApi } from '@/services/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import BalanceCard from '@/components/dashboard/BalanceCard';
+import TransactionTable from '@/components/dashboard/TransactionTable';
+import PortfolioChart from '@/components/dashboard/PortfolioChart';
+import DepositModal from "@/components/dashboard/DepositModal";
+import { WithdrawModal } from '@/components/dashboard/WithdrawModal';
 import { useToast } from '@/hooks/use-toast';
-import EmptyState from './EmptyState';
-import { Skeleton } from "@/components/ui/skeleton";
-import PortfolioTable from "./forex/PortfolioTable";
-import { Button } from "@/components/ui/button";
-import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import PortfolioTable from '@/components/dashboard/forex/PortfolioTable';
 
-interface UserData {
+// Consider data fresh for 10 seconds
+const STALE_TIME = 1000 * 10;
+
+// TypeScript interfaces for data structures
+interface User {
   balance: number;
   phone: string;
-  referralCode: string;
-}
-
-interface Transaction {
-  _id: string;
-  type: string;
-  amount: number;
-  status: string;
-  description: string;
-  createdAt: string;
 }
 
 interface Investment {
-  _id: string;
-  forexPair: string;
+  amount: number;
+  profit: number;
+  // Add other fields as needed
+}
+
+interface Transaction {
+  id: string;
   amount: number;
   type: string;
-  entryPrice: number;
-  currentPrice: number;
-  profit: number;
-  status: string;
+  date: string;
 }
 
 interface InvestmentHistory {
   date: string;
-  amount: number;
-  type: string;
-  balance: number;
+  value: number;
 }
 
-export function Dashboard() {
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [investments, setInvestments] = useState<Investment[]>([]);
-  const [investmentHistory, setInvestmentHistory] = useState<InvestmentHistory[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
+interface ReferralStats {
+  earnings: {
+    total: number;
+  };
+}
+
+export default function Dashboard() {
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        const [userResponse, transactionsResponse, investmentsResponse, historyResponse] = await Promise.all([
-          userApi.getProfile(),
-          transactionApi.getTransactions(),
-          investmentApi.getInvestments(),
-          investmentApi.getHistory()
-        ]);
-
-        setUserData(userResponse.user);
-        setTransactions(transactionsResponse.transactions || []);
-        setInvestments(investmentsResponse.investments || []);
-        setInvestmentHistory(historyResponse.history || []);
-      } catch (error: any) {
-        console.error('Dashboard data fetch error:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: error.message || 'Failed to load dashboard data',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [toast]);
-
-  const handleClosePosition = async (investmentId: string) => {
-    try {
-      // Implementation for closing position
+  // Fetch user data
+  const { data: userData, isLoading: isUserLoading } = useQuery<User>({
+    queryKey: ['user'],
+    queryFn: async () => {
+      const response = await userApi.getProfile();
+      return response.user;
+    },
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+    onError: () => {
       toast({
-        title: "Coming Soon",
-        description: "Position closing will be available soon!",
+        title: "Error",
+        description: "Failed to load user profile",
+        variant: "destructive",
       });
-    } catch (error: any) {
+    },
+  });
+
+  // Fetch investments
+  const { data: investments = [], isLoading: isInvestmentsLoading } = useQuery<Investment[]>({
+    queryKey: ['investments'],
+    queryFn: async () => {
+      const response = await investmentApi.getInvestments();
+      return response.investments || [];
+    },
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+    onError: () => {
       toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to close position',
+        title: "Error",
+        description: "Failed to load investments",
+        variant: "destructive",
       });
+    },
+  });
+
+  // Fetch investment history
+  const { data: investmentHistory = [], isLoading: isHistoryLoading } = useQuery<InvestmentHistory[]>({
+    queryKey: ['investmentHistory'],
+    queryFn: async () => {
+      const response = await investmentApi.getHistory();
+      return response.history || [];
+    },
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to load investment history",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Fetch transactions
+  const { data: transactions = [], isLoading: isTransactionsLoading } = useQuery<Transaction[]>({
+    queryKey: ['transactions'],
+    queryFn: async () => {
+      const response = await transactionApi.getTransactions();
+      return response.transactions || [];
+    },
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to load transactions",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Fetch referral stats
+  const { data: referralStats = { earnings: { total: 0 } }, isLoading: isReferralLoading } = useQuery<ReferralStats>({
+    queryKey: ['referralStats'],
+    queryFn: async () => {
+      const response = await referralApi.getStats();
+      return response;
+    },
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to load referral stats",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Function to manually refresh specific data
+  const refreshData = (type?: 'deposit' | 'withdraw') => {
+    queryClient.invalidateQueries({ queryKey: ['user'] });
+    if (type === 'deposit' || type === 'withdraw') {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
     }
   };
 
-  const handleDeposit = () => {
-    navigate('/deposit');
+  const handleModalClose = (type: 'deposit' | 'withdraw') => {
+    refreshData(type);
   };
 
-  const handleWithdraw = () => {
-    if (!userData?.balance || userData.balance <= 0) {
-      toast({
-        variant: 'destructive',
-        title: 'Insufficient Balance',
-        description: 'Please make a deposit first before withdrawing.',
-      });
-      return;
-    }
-    navigate('/withdraw');
-  };
+  const isLoading = isUserLoading || isInvestmentsLoading || isHistoryLoading || isTransactionsLoading || isReferralLoading;
 
-  const handleInvest = () => {
-    navigate('/forex');
-  };
-
-  const handleInvestmentCreated = (newInvestment: any) => {
-    // Update investments list
-    setInvestments((prevInvestments) => [newInvestment, ...prevInvestments]);
-    
-    // Update user balance
-    if (userData) {
-      setUserData({
-        ...userData,
-        balance: newInvestment.userBalance
-      });
-    }
-    
-    // Refresh investment stats
-    // fetchInvestmentStats(); // This function is not defined in the provided code
-  };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="h-32 bg-gray-200 rounded animate-pulse" />
-        <div className="space-y-3">
-          <div className="h-4 bg-gray-200 rounded w-1/4 animate-pulse" />
-          <div className="h-4 bg-gray-200 rounded w-1/2 animate-pulse" />
-        </div>
-      </div>
-    );
-  }
+  const totalInvested = investments.reduce((acc, inv) => acc + inv.amount, 0);
+  const totalEarnings = investments.reduce((acc, inv) => acc + inv.profit, 0);
+  const referralEarnings = referralStats.earnings.total;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="space-y-6">
-        {/* User Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Balance Card */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900">Balance</h3>
-            <p className="text-3xl font-bold text-green-600">
-              KES {userData?.balance?.toLocaleString() || "0"}
-            </p>
+    <div className="min-h-screen w-full bg-background overflow-x-hidden">
+      <div className="container mx-auto px-2 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-[1400px]">
+        <div className="space-y-4 sm:space-y-6">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+            {/* Balance Card */}
+            <Card className="w-full p-3 sm:p-4 lg:p-6">
+              <div className="flex flex-col">
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Balance</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-primary mt-1 truncate">
+                  KES {(userData?.balance ?? 0).toLocaleString()}
+                </p>
+              </div>
+            </Card>
+
+            {/* Total Invested Card */}
+            <Card className="w-full p-3 sm:p-4 lg:p-6">
+              <div className="flex flex-col">
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Invested</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-blue-600 mt-1 truncate">
+                  KES {totalInvested.toLocaleString()}
+                </p>
+              </div>
+            </Card>
+
+            {/* Total Earnings Card */}
+            <Card className="w-full p-3 sm:p-4 lg:p-6">
+              <div className="flex flex-col">
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Earnings</p>
+                <p className={`text-base sm:text-lg lg:text-2xl font-bold ${totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'} mt-1 truncate`}>
+                  KES {totalEarnings.toLocaleString()}
+                </p>
+              </div>
+            </Card>
+
+            {/* Referral Earnings Card */}
+            <Card className="w-full p-3 sm:p-4 lg:p-6">
+              <div className="flex flex-col">
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Referral Earnings</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-orange-600 mt-1 truncate">
+                  KES {referralEarnings.toLocaleString()}
+                </p>
+              </div>
+            </Card>
           </div>
 
-          {/* Total Investments Card */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900">Total Invested</h3>
-            <p className="text-3xl font-bold text-blue-600">
-              KES {investments.reduce((acc, investment) => acc + investment.amount, 0).toLocaleString() || "0"}
-            </p>
+          {/* Action Buttons */}
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
+            <Button 
+              size="lg"
+              className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold"
+              onClick={() => setShowDepositModal(true)}
+            >
+              Deposit
+            </Button>
+            <Button 
+              size="lg"
+              variant="outline"
+              className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold"
+              onClick={() => setShowWithdrawModal(true)}
+            >
+              Withdraw
+            </Button>
           </div>
 
-          {/* Total Earnings Card */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900">Total Earnings</h3>
-            <p className="text-3xl font-bold text-purple-600">
-              KES {investments.reduce((acc, investment) => acc + investment.profit, 0).toLocaleString() || "0"}
-            </p>
-          </div>
+          {/* Portfolio Chart */}
+          <Card className="w-full p-2 sm:p-4 lg:p-6">
+            <div className="w-full overflow-hidden">
+              <PortfolioChart 
+                investments={investments} 
+                history={investmentHistory}
+                isLoading={isLoading} 
+              />
+            </div>
+          </Card>
 
-          {/* Referral Earnings Card */}
-          <div className="bg-white rounded-lg shadow p-6 cursor-pointer" onClick={handleInvest}>
-            <h3 className="text-lg font-medium text-gray-900">Referral Earnings</h3>
-            <p className="text-3xl font-bold text-orange-600">
-              KES {0}
-            </p>
-          </div>
+          {/* Portfolio Table */}
+          <Card className="w-full p-2 sm:p-4 lg:p-6">
+            <h2 className="text-base sm:text-lg lg:text-xl font-medium mb-4">Your Portfolio</h2>
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-full align-middle">
+                <PortfolioTable investments={investments} isLoading={isLoading} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Transaction History */}
+          <Card className="w-full p-2 sm:p-4 lg:p-6">
+            <h2 className="text-base sm:text-lg lg:text-xl font-medium mb-4">Recent Transactions</h2>
+            <div className="w-full overflow-x-auto">
+              <div className="min-w-full align-middle">
+                <TransactionTable transactions={transactions} />
+              </div>
+            </div>
+          </Card>
         </div>
 
-        {/* Portfolio Chart */}
-        <div className="bg-white rounded-lg shadow">
-          <PortfolioChart 
-            investments={investments} 
-            history={investmentHistory}
-            isLoading={isLoading} 
-          />
-        </div>
-
-        {/* Portfolio Section */}
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-semibold">Your Portfolio</h2>
-            <Button onClick={handleInvest}>Make Investment</Button>
-          </div>
-          <PortfolioTable investments={investments} />
-        </div>
+        {/* Modals */}
+        <DepositModal 
+          isOpen={showDepositModal} 
+          onClose={() => {
+            setShowDepositModal(false);
+            handleModalClose('deposit');
+          }} 
+        />
+        
+        <WithdrawModal 
+          isOpen={showWithdrawModal}
+          onClose={() => {
+            setShowWithdrawModal(false);
+            handleModalClose('withdraw');
+          }}
+          userBalance={userData?.balance ?? 0}
+          userPhone={userData?.phone ?? ''}
+        />
       </div>
     </div>
   );

@@ -26,6 +26,11 @@ interface PortfolioChartProps {
   investments?: Investment[];
   history?: InvestmentHistory[];
   isLoading?: boolean;
+  referralStats?: {
+    earnings: {
+      total: number;
+    };
+  };
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -51,7 +56,12 @@ const formatCurrency = (value: number) => {
   });
 };
 
-export default function PortfolioChart({ investments = [], history = [], isLoading = false }: PortfolioChartProps) {
+export default function PortfolioChart({ 
+  investments = [], 
+  history = [], 
+  isLoading = false,
+  referralStats = { earnings: { total: 0 } }
+}: PortfolioChartProps) {
   if (isLoading) {
     return (
       <Card className="col-span-3">
@@ -87,9 +97,33 @@ export default function PortfolioChart({ investments = [], history = [], isLoadi
   };
 
   const processChartData = (period: 'all' | '7d' | '30d' = 'all') => {
-    if (!history.length) return [];
+    console.log('Processing chart data:', {
+      historyLength: history.length,
+      investments,
+      referralStats
+    });
 
-    // Group history by date
+    // Get the earliest date from investments
+    const investmentDates = investments.map(inv => new Date(inv.createdAt).toISOString().split('T')[0]);
+    const earliestDate = investmentDates.length ? investmentDates.sort()[0] : new Date().toISOString().split('T')[0];
+    
+    // Initialize data with investment amounts
+    const initialData: { [key: string]: any } = {};
+    investments.forEach(inv => {
+      const date = new Date(inv.createdAt).toISOString().split('T')[0];
+      if (!initialData[date]) {
+        initialData[date] = {
+          date,
+          totalEarnings: 0,
+          totalInvestments: 0,
+          referralEarnings: 0
+        };
+      }
+      const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
+      initialData[date].totalInvestments += amount;
+    });
+
+    // Add history entries
     const dailyData = history.reduce((acc: { [key: string]: any }, item) => {
       const date = item.date;
       if (!acc[date]) {
@@ -101,24 +135,46 @@ export default function PortfolioChart({ investments = [], history = [], isLoadi
         };
       }
       
+      const amount = typeof item.amount === 'string' ? parseFloat(item.amount) : (item.amount || 0);
+      console.log('Processing history item:', { date, type: item.type, amount });
+      
       if (item.type === 'roi_earning') {
-        acc[date].totalEarnings += item.amount;
+        acc[date].totalEarnings += amount;
       } else if (item.type === 'investment') {
-        acc[date].totalInvestments += item.amount;
-      } else if (item.type === 'referral_earning') {
-        acc[date].referralEarnings += item.amount;
+        acc[date].totalInvestments += amount;
+      } else if (['referral_earning', 'daily_commission', 'one_time_reward'].includes(item.type)) {
+        acc[date].referralEarnings += amount;
       }
       
       return acc;
-    }, {});
+    }, initialData);
+
+    console.log('Daily data after grouping:', dailyData);
 
     // Convert to array and sort by date
     let chartData = Object.values(dailyData)
-      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map((item: any) => ({
-        ...item,
-        date: formatDate(item.date)
-      }));
+      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Calculate cumulative totals
+    let runningTotalEarnings = 0;
+    let runningTotalInvestments = 0;
+    let runningReferralEarnings = 0;
+
+    chartData = chartData.map((item: any) => {
+      runningTotalEarnings += item.totalEarnings;
+      runningTotalInvestments += item.totalInvestments;
+      runningReferralEarnings += item.referralEarnings;
+
+      const dataPoint = {
+        date: formatDate(item.date),
+        totalEarnings: runningTotalEarnings,
+        totalInvestments: runningTotalInvestments,
+        referralEarnings: runningReferralEarnings
+      };
+      
+      console.log('Cumulative data point:', dataPoint);
+      return dataPoint;
+    });
 
     // Filter based on period
     if (period === '7d') {
@@ -127,6 +183,43 @@ export default function PortfolioChart({ investments = [], history = [], isLoadi
       chartData = chartData.slice(-30);
     }
 
+    // If there's no data for the current day, add current totals
+    const lastDate = chartData[chartData.length - 1]?.date;
+    const today = formatDate(new Date().toISOString());
+    
+    if (lastDate !== today) {
+      const currentTotals = {
+        date: today,
+        totalEarnings: investments.reduce((sum, inv) => {
+          const profit = typeof inv.profit === 'string' ? parseFloat(inv.profit) : (inv.profit || 0);
+          return sum + profit;
+        }, 0),
+        totalInvestments: investments.reduce((sum, inv) => {
+          const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
+          return sum + amount;
+        }, 0),
+        referralEarnings: typeof referralStats.earnings.total === 'string' 
+          ? parseFloat(referralStats.earnings.total) 
+          : (referralStats.earnings.total || 0)
+      };
+      
+      console.log('Adding current day totals:', currentTotals);
+      chartData.push(currentTotals);
+    }
+
+    // Ensure referral earnings are included in the last data point
+    if (chartData.length > 0) {
+      const lastPoint = chartData[chartData.length - 1];
+      const referralTotal = typeof referralStats.earnings.total === 'string' 
+        ? parseFloat(referralStats.earnings.total) 
+        : (referralStats.earnings.total || 0);
+      
+      if (lastPoint.referralEarnings !== referralTotal) {
+        lastPoint.referralEarnings = referralTotal;
+      }
+    }
+
+    console.log('Final chart data:', chartData);
     return chartData;
   };
 
@@ -137,16 +230,22 @@ export default function PortfolioChart({ investments = [], history = [], isLoadi
   return (
     <Card className="col-span-3">
       <CardHeader>
-        <CardTitle>Portfolio Performance</CardTitle>
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="text-muted-foreground">Total Investment</p>
-            <p className="text-xl font-bold">{formatCurrency(totalInvestment)}</p>
+        <CardTitle className="text-lg sm:text-xl mb-4">Portfolio Performance</CardTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          <div className="space-y-1">
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Investment</p>
+            <p className="text-base sm:text-xl font-bold truncate">{formatCurrency(totalInvestment)}</p>
           </div>
-          <div>
-            <p className="text-muted-foreground">Total Earnings</p>
-            <p className={`text-xl font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className="space-y-1">
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Earnings</p>
+            <p className={`text-base sm:text-xl font-bold truncate ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(totalProfit)}
+            </p>
+          </div>
+          <div className="col-span-2 sm:col-span-1 space-y-1">
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">Referral Earnings</p>
+            <p className="text-base sm:text-xl font-bold text-orange-600 truncate">
+              {formatCurrency(referralStats.earnings.total || 0)}
             </p>
           </div>
         </div>

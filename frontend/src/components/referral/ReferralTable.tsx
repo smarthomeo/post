@@ -37,6 +37,18 @@ interface ReferralRecord {
 // Consider data fresh for 10 seconds
 const STALE_TIME = 1000 * 10;
 
+// Helper function to mask phone number
+const maskPhoneNumber = (phone: string) => {
+  if (!phone) return '';
+  // Keep the country code and first digit, mask the middle, show last 2 digits
+  const parts = phone.split('');
+  const countryCodeEnd = phone.startsWith('+') ? 4 : 3; // Handle numbers with or without '+'
+  const visibleStart = parts.slice(0, countryCodeEnd).join('');
+  const maskedPart = parts.slice(countryCodeEnd, -2).map(() => '*').join('');
+  const visibleEnd = parts.slice(-2).join('');
+  return `${visibleStart}${maskedPart}${visibleEnd}`;
+};
+
 export function ReferralTable() {
   const { toast } = useToast();
 
@@ -63,15 +75,7 @@ export function ReferralTable() {
       return [];
     },
     staleTime: STALE_TIME,
-    refetchOnWindowFocus: false,
-    onError: (err: any) => {
-      console.error('Referral history error:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to load referral history',
-      });
-    }
+    refetchOnWindowFocus: false
   });
 
   if (isLoading) {
@@ -85,9 +89,10 @@ export function ReferralTable() {
   }
 
   if (error) {
+    console.error('Referral history error:', error);
     return (
       <div className="text-red-500">
-        Error: {(error as Error).message}
+        Error loading referral history
       </div>
     );
   }
@@ -121,7 +126,7 @@ export function ReferralTable() {
                       L{referral.level}
                     </Badge>
                   </div>
-                  <span className="text-sm text-muted-foreground">{referral.phone}</span>
+                  <span className="text-sm text-muted-foreground">{maskPhoneNumber(referral.phone)}</span>
                   <span className="text-xs text-muted-foreground">
                     Joined {new Date(referral.joinedAt).toLocaleDateString()}
                   </span>
@@ -129,7 +134,7 @@ export function ReferralTable() {
               </TableCell>
               <TableCell>
                 <div className="flex flex-col">
-                  <Badge variant={referral.isActive ? "success" : "secondary"}>
+                  <Badge variant={referral.isActive ? "default" : "secondary"}>
                     {referral.isActive ? 'Active' : 'Inactive'}
                   </Badge>
                   <span className="text-xs text-muted-foreground mt-1">
