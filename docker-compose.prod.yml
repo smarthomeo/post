@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    environment:
+      - FRONTEND_URL=http://159.223.105.44
+      - MONGODB_URI=mongodb://mongodb:27017/pos
+      - FLASK_ENV=production
+      - FLASK_DEBUG=0
+    restart: always
+    depends_on:
+      - mongodb
+
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: http://159.223.105.44:5000
+    ports:
+      - "80:80"
+    restart: always
+    depends_on:
+      - backend
+
+  mongodb:
+    image: mongo:latest
+    volumes:
+      - mongodb_data:/data/db
+    restart: always
+
+volumes:
+  mongodb_data:
