@@ -2,11 +2,14 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/s
 import { AppSidebar } from "./AppSidebar";
 import { Toaster } from "@/components/ui/toaster";
 import { Link } from "react-router-dom";
-import { UserCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { useUser } from "@/hooks/use-user";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
+  const { user } = useUser();
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -20,7 +23,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
               <Button variant="ghost" size="icon" asChild>
                 <Link to="/profile">
-                  <UserCircle2 className="h-5 w-5" />
+                  <UserAvatar username={user?.username || ''} size="sm" />
                   <span className="sr-only">Profile</span>
                 </Link>
               </Button>

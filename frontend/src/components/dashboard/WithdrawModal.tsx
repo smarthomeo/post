@@ -15,14 +15,19 @@ import { transactionApi } from "@/services/api";
 interface WithdrawModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userBalance: number;
+  withdrawableAmount: number;
   userPhone: string;
 }
 
 const MIN_WITHDRAWAL = 200;
-const TELEGRAM_GROUP_LINK = "https://t.me/+254747275132"; // Replace with your actual Telegram group link
+const TELEGRAM_GROUP_LINK = "https://t.me/estrellabluesky"; // Replace with your actual Telegram group link
 
-export function WithdrawModal({ isOpen, onClose, userBalance, userPhone }: WithdrawModalProps) {
+export function WithdrawModal({ 
+  isOpen, 
+  onClose, 
+  withdrawableAmount = 0, // Provide default value
+  userPhone 
+}: WithdrawModalProps) {
   const [amount, setAmount] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -30,66 +35,58 @@ export function WithdrawModal({ isOpen, onClose, userBalance, userPhone }: Withd
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const withdrawAmount = Number(amount);
-    
-    if (isNaN(withdrawAmount) || withdrawAmount < MIN_WITHDRAWAL) {
+    const withdrawAmount = parseFloat(amount);
+    if (!withdrawAmount || withdrawAmount <= 0) {
       toast({
         variant: "destructive",
         title: "Invalid amount",
-        description: `Minimum withdrawal amount is KES ${MIN_WITHDRAWAL}`,
+        description: "Please enter a valid amount to withdraw",
       });
       return;
     }
 
-    if (withdrawAmount > userBalance) {
+    if (withdrawAmount > withdrawableAmount) {
       toast({
         variant: "destructive",
-        title: "Insufficient balance",
-        description: "Withdrawal amount exceeds your available balance",
+        title: "Insufficient funds",
+        description: "You don't have enough withdrawable funds",
       });
       return;
     }
 
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      
-      // Create withdrawal transaction
-      const response = await transactionApi.initiateWithdrawal(withdrawAmount);
-      
-      // Format the telegram message
-      const message = encodeURIComponent(
-        `🔄 Withdrawal Request\n\n` +
-        `📱 Phone: ${userPhone}\n` +
-        `💰 Amount: KES ${withdrawAmount}\n` +
-        `⚖️ Current Balance: KES ${userBalance}\n\n` +
-        `Transaction ID: ${response.transaction._id}\n\n` +
-        `Please process this withdrawal request.`
-      );
-
-      // Open telegram with pre-filled message
-      window.open(`${TELEGRAM_GROUP_LINK}?text=${message}`, '_blank');
-      
-      // Close the modal
-      onClose();
-      
-      // Show success message
+      await transactionApi.initiateWithdrawal(withdrawAmount);
       toast({
-        title: "Withdrawal request sent",
-        description: "Please wait for admin approval on Telegram",
+        title: "Withdrawal initiated",
+        description: "Your withdrawal request has been submitted for processing",
       });
-    } catch (error: any) {
+      setAmount("");
+      onClose();
+    } catch (error) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to create withdrawal request",
+        title: "Withdrawal failed",
+        description: error instanceof Error ? error.message : "Failed to process withdrawal",
       });
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Format amount with proper handling of undefined/null values
+  const formattedWithdrawableAmount = Number(withdrawableAmount || 0).toLocaleString('en-KE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={() => {
+      if (!isLoading) {
+        setAmount("");
+        onClose();
+      }
+    }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Withdraw Funds</DialogTitle>
@@ -107,17 +104,34 @@ export function WithdrawModal({ isOpen, onClose, userBalance, userPhone }: Withd
               onChange={(e) => setAmount(e.target.value)}
               placeholder="Enter amount to withdraw"
               min={MIN_WITHDRAWAL}
-              max={userBalance}
-              required
+              step="0.01"
               disabled={isLoading}
             />
             <p className="text-sm text-muted-foreground">
-              Available balance: KES {userBalance}
+              Available to withdraw: KES {formattedWithdrawableAmount}
             </p>
           </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Processing..." : "Request Withdrawal"}
-          </Button>
+          <div>
+            <p className="text-sm text-muted-foreground mb-2">
+              Withdrawal will be sent to: {userPhone}
+            </p>
+          </div>
+          <div className="flex justify-end space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={isLoading || !amount || parseFloat(amount) < MIN_WITHDRAWAL}
+            >
+              {isLoading ? "Processing..." : "Withdraw"}
+            </Button>
+          </div>
           <p className="text-sm text-muted-foreground text-center">
             Withdrawal requests are processed within 24 hours
           </p>

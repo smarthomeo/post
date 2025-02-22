@@ -18,7 +18,7 @@ interface DepositModalProps {
   onClose: () => void;
 }
 
-const TILL_NUMBER = "123456"; // Replace with your actual till number
+const TILL_NUMBER = "3232476"; // Replace with your actual till number
 const TELEGRAM_GROUP_LINK = "https://t.me/+254747275132"; // Replace with your actual Telegram group link
 
 export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
@@ -33,10 +33,6 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
     });
   };
 
-  const handleMpesa = () => {
-    // This will open the dialer with the till number
-    window.location.href = `tel:*174*${TILL_NUMBER}#`;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +60,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
         `Amount: KES ${depositAmount}\n` +
         `Till Number: ${TILL_NUMBER}\n` +
         `Transaction ID: ${response.transaction._id}\n\n` +
+        'Enter mpesa confirmation message below.' +
         `Please confirm this deposit.`
       );
 
@@ -133,14 +130,7 @@ export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
             >
               {isLoading ? "Processing..." : "Create Deposit Request"}
             </Button>
-            <Button 
-              type="button"
-              className="w-full" 
-              onClick={handleMpesa}
-              disabled={isLoading}
-            >
-              Open M-Pesa
-            </Button>
+            
             <p className="text-sm text-muted-foreground text-center mt-4">
               After sending money, please notify us on Telegram for faster processing
             </p>

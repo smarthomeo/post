@@ -8,6 +8,7 @@ import { adminApi } from '@/services/api';
 import { PasswordReset } from '@/components/admin/PasswordReset';
 import { DashboardStats } from '@/components/admin/DashboardStats';
 import { UserManagement } from '@/components/admin/UserManagement';
+import { TransactionHistory } from '@/components/admin/TransactionHistory';
 
 // Consider data fresh for 10 seconds
 const STALE_TIME = 1000 * 10;
@@ -38,6 +39,7 @@ interface User {
 export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("users");
 
   // Fetch all users
   const { data: users = [], isLoading: isUsersLoading } = useQuery({
@@ -179,12 +181,13 @@ export default function AdminDashboard() {
     <div className="container mx-auto px-4 py-8 max-w-7xl space-y-8">
       <DashboardStats {...stats} />
 
-      <Tabs defaultValue="users" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="verifications">Verifications</TabsTrigger>
           <TabsTrigger value="password-reset">Password Reset</TabsTrigger>
+          <TabsTrigger value="transaction-history">Transaction History</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users">
@@ -331,7 +334,11 @@ export default function AdminDashboard() {
             <PasswordReset />
           </div>
         </TabsContent>
+
+        <TabsContent value="transaction-history">
+          <TransactionHistory />
+        </TabsContent>
       </Tabs>
     </div>
   );
-} 
+}

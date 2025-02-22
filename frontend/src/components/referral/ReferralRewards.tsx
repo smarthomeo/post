@@ -52,7 +52,7 @@ export function ReferralRewards() {
                   {FOREX_REWARDS.map((reward) => (
                     <TableRow key={reward.pair}>
                       <TableCell>{reward.pair}</TableCell>
-                      <TableCell>${reward.reward}</TableCell>
+                      <TableCell>KES {reward.reward}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

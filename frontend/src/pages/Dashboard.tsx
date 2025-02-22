@@ -161,12 +161,15 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            {/* Total Earnings Card */}
+            {/* Withdrawable Card */}
             <Card className="w-full p-3 sm:p-4 lg:p-6">
               <div className="flex flex-col">
-                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Earnings</p>
-                <p className={`text-base sm:text-lg lg:text-2xl font-bold ${totalEarnings >= 0 ? 'text-green-600' : 'text-red-600'} mt-1 truncate`}>
-                  KES {Number(totalEarnings).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Earnings</p>
+                <p className="text-base sm:text-lg lg:text-2xl font-bold text-purple-600 mt-1 truncate">
+                  KES {Number(userData?.withdrawable || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  ROI + Referrals
                 </p>
               </div>
             </Card>
@@ -249,7 +252,7 @@ export default function Dashboard() {
             setShowWithdrawModal(false);
             handleModalClose();
           }}
-          userBalance={userData?.balance || 0}
+          withdrawableAmount={userData?.withdrawable || 0}
           userPhone={userData?.phone || ''}
         />
       </div>

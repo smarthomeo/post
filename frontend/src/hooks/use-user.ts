@@ -1,16 +1,7 @@
 import { useContext } from 'react';
-import { AuthContext } from '@/contexts/AuthContext';
+import { AuthContext, type User } from '@/contexts/AuthContext';
 
-export interface User {
-  _id: string;
-  username: string;
-  email: string;
-  phone: string;
-  balance: number;
-  referralCode: string;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { User };
 
 export function useUser() {
   const context = useContext(AuthContext);
@@ -20,7 +11,7 @@ export function useUser() {
 
   const { user, setUser } = context;
 
-  const mutate = (newUser: User) => {
+  const mutate = (newUser: User | null) => {
     setUser(newUser);
   };
 

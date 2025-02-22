@@ -26,11 +26,11 @@ interface User {
   _id: string;
   username: string;
   phone: string;
-  balance: number;
+  balance: number | undefined;
   isActive: boolean;
   isVerified: boolean;
   createdAt: string;
-  totalInvestments: number;
+  totalInvestments: number | undefined;
   referralCount: number;
 }
 
@@ -54,8 +54,8 @@ export function UserManagement({ users, isLoading, onDeleteUser, onResetPassword
     });
   };
 
-  const formatCurrency = (amount: number) => {
-    return amount.toLocaleString('en-KE', {
+  const formatCurrency = (amount: number | undefined) => {
+    return (amount || 0).toLocaleString('en-KE', {
       style: 'currency',
       currency: 'KES',
     });

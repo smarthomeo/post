@@ -11,7 +11,6 @@ import {
   Lock,
   HelpCircle,
   FileText,
-  Mail,
   ExternalLink,
   AlertCircle,
 } from "lucide-react";
@@ -21,7 +20,7 @@ export default function Support() {
   const { toast } = useToast();
 
   const handleTelegramChat = () => {
-    window.open('https://t.me/blueskyinvestments', '_blank');
+    window.open('https://t.me/@estrellabluesky', '_blank');
   };
 
   const handlePasswordReset = () => {
@@ -30,10 +29,6 @@ export default function Support() {
       title: "Password Reset",
       description: "Please check your email for password reset instructions.",
     });
-  };
-
-  const handleEmailSupport = () => {
-    window.location.href = 'mailto:support@blueskyinvestments.com';
   };
 
   return (
@@ -83,24 +78,7 @@ export default function Support() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-primary" />
-              Email Support
-            </CardTitle>
-            <CardDescription>Send us an email for assistance</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              variant="outline" 
-              className="w-full"
-              onClick={handleEmailSupport}
-            >
-              Send Email
-            </Button>
-          </CardContent>
-        </Card>
+        
       </div>
 
       {/* FAQs */}
@@ -150,24 +128,7 @@ export default function Support() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5" />
-              Emergency Support
-            </CardTitle>
-            <CardDescription>24/7 emergency assistance</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              For urgent matters requiring immediate attention:
-            </p>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Emergency Hotline:</p>
-              <p className="text-sm">+254 700 000 000</p>
-            </div>
-          </CardContent>
-        </Card>
+        
       </div>
     </div>
   );

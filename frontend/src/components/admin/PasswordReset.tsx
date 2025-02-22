@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { adminApi } from "@/services/api";
 import {
   Card,
   CardContent,
@@ -34,57 +36,56 @@ interface PasswordResetHistory {
 export function PasswordReset() {
   const { toast } = useToast();
   const [phone, setPhone] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [resetHistory, setResetHistory] = useState<PasswordResetHistory[]>([]);
   const [lastReset, setLastReset] = useState<PasswordResetHistory | null>(null);
+  const queryClient = useQueryClient();
 
-  const handleResetPassword = async () => {
-    try {
-      setLoading(true);
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-      const response = await fetch(`${backendUrl}/api/admin/reset-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ phone }),
-      });
+  // Fetch password reset history
+  const { data: resetHistoryData, isLoading: isLoadingHistory } = useQuery({
+    queryKey: ['passwordResetHistory'],
+    queryFn: adminApi.getPasswordResetHistory,
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to reset password");
-      }
+  const resetHistory = resetHistoryData?.history || [];
 
-      const data = await response.json();
-      
+  // Reset password mutation
+  const resetPasswordMutation = useMutation({
+    mutationFn: adminApi.resetPassword,
+    onSuccess: (data) => {
+      // Create a new reset entry from the response
       const newReset: PasswordResetHistory = {
-        _id: data._id,
-        userId: data.userId,
+        _id: Date.now().toString(),
+        userId: 'temp',
         username: data.username,
         phone: data.phone,
         temporaryPassword: data.temporaryPassword,
         resetAt: new Date().toISOString(),
-        isUsed: false,
+        isUsed: false
       };
-
-      setLastReset(newReset);
-      setResetHistory(prev => [newReset, ...prev].slice(0, 10));
-      setPhone("");
       
+      // Update the local state
+      setLastReset(newReset);
+      
+      // Refetch the history
+      queryClient.invalidateQueries({ queryKey: ['passwordResetHistory'] });
+      
+      setPhone("");
       toast({
         title: "Success",
         description: "Password reset successful",
       });
-    } catch (error: any) {
+    },
+    onError: (error: Error) => {
       toast({
         variant: "destructive",
         title: "Error",
         description: error.message || "Failed to reset password",
       });
-    } finally {
-      setLoading(false);
     }
+  });
+
+  const handleResetPassword = async () => {
+    resetPasswordMutation.mutate(phone);
   };
 
   const copyToClipboard = (text: string) => {
@@ -129,10 +130,10 @@ export function PasswordReset() {
             </div>
             <Button
               onClick={handleResetPassword}
-              disabled={loading || !phone}
+              disabled={resetPasswordMutation.isPending || !phone}
               className="w-full"
             >
-              {loading ? "Generating..." : "Generate Temporary Password"}
+              {resetPasswordMutation.isPending ? "Generating..." : "Generate Temporary Password"}
             </Button>
           </div>
         </CardContent>
@@ -169,7 +170,9 @@ export function PasswordReset() {
         </Alert>
       )}
 
-      {resetHistory.length > 0 && (
+      {isLoadingHistory ? (
+        <div>Loading history...</div>
+      ) : resetHistory.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Recent Password Resets</CardTitle>
@@ -221,7 +224,7 @@ export function PasswordReset() {
             </Table>
           </CardContent>
         </Card>
-      )}
+      ) : null}
     </div>
   );
-} 
+}

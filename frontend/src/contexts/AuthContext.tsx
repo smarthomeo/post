@@ -6,6 +6,7 @@ export interface User {
   username: string;
   phone: string;
   balance: number;
+  withdrawable: number;
   referralCode: string;
   isAdmin: boolean;
   isActive: boolean;
@@ -19,6 +20,7 @@ export interface AuthContextType {
   login: (phone: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => void;
+  setUser: (user: User | null) => void;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -47,6 +49,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             username: response.user.username,
             phone: response.user.phone,
             balance: response.user.balance || 0,
+            withdrawable: response.user.withdrawable || 0,
             referralCode: response.user.referralCode,
             isAdmin: response.user.isAdmin || false,
             isActive: response.user.isActive || false,
@@ -78,6 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         username: response.user.username,
         phone: response.user.phone,
         balance: response.user.balance || 0,
+        withdrawable: response.user.withdrawable || 0,
         referralCode: response.user.referralCode,
         isAdmin: response.user.isAdmin || false,
         isActive: response.user.isActive || false,
@@ -114,7 +118,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, setUser }}>
       {children}
     </AuthContext.Provider>
   );

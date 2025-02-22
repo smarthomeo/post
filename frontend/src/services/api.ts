@@ -143,6 +143,14 @@ export const adminApi = {
     return response.json();
   },
 
+  getStats: async () => {
+    const response = await fetch(`${API_URL}/admin/stats`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch admin stats');
+    return response.json();
+  },
+
   approveTransaction: async (transactionId: string) => {
     const response = await fetch(`${API_URL}/admin/transactions/${transactionId}/approve`, {
       method: 'POST',
@@ -191,12 +199,37 @@ export const adminApi = {
     const response = await fetch(`${API_URL}/admin/reset-password`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
       credentials: 'include',
-      body: JSON.stringify({ phone })
+      body: JSON.stringify({ phone }),
     });
-    if (!response.ok) throw new Error('Failed to reset password');
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to reset password');
+    }
     return response.json();
-  }
+  },
+
+  getPasswordResetHistory: async () => {
+    const response = await fetch(`${API_URL}/admin/reset-password/history`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch password reset history');
+    return response.json();
+  },
+
+  getTransactions: async (params: { page?: number; limit?: number; status?: string; type?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.append('page', params.page.toString());
+    if (params.limit) searchParams.append('limit', params.limit.toString());
+    if (params.status) searchParams.append('status', params.status);
+    if (params.type) searchParams.append('type', params.type);
+    
+    const response = await fetch(`${API_URL}/admin/transactions?${searchParams.toString()}`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch transactions');
+    return response.json();
+  },
 };

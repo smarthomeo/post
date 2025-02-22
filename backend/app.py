@@ -161,6 +161,21 @@ def admin_reset_password_options():
     response = app.make_default_options_response()
     return response
 
+@app.route('/api/admin/users', methods=['OPTIONS'])
+def get_all_users_options():
+    response = app.make_default_options_response()
+    return response
+
+@app.route('/api/admin/users/<user_id>', methods=['OPTIONS'])
+def delete_user_options(user_id):
+    response = app.make_default_options_response()
+    return response
+
+@app.route('/api/admin/reset-password/history', methods=['OPTIONS'])
+def get_password_reset_history_options():
+    response = app.make_default_options_response()
+    return response
+
 # Admin routes
 @app.route('/api/admin/transactions/<transaction_id>/approve', methods=['POST'])
 @admin_required
@@ -185,6 +200,12 @@ def approve_transaction(transaction_id):
             print("No user ID found in transaction")
             return jsonify({'message': 'Invalid transaction: no user ID'}), 400
 
+        # For withdrawals, verify sufficient withdrawable amount
+        if transaction['type'] == 'withdrawal' and transaction.get('withdrawalType') == 'earnings':
+            withdrawable = calculate_withdrawable_amount(user_id)
+            if float(transaction['amount']) > withdrawable:
+                return jsonify({'message': 'Insufficient withdrawable amount'}), 400
+
         # Update transaction status
         update_result = mongo_client.pos.transactions.update_one(
             {'_id': ObjectId(transaction_id)},
@@ -195,8 +216,9 @@ def approve_transaction(transaction_id):
             print("Transaction status update failed")
             return jsonify({'message': 'Failed to update transaction'}), 500
 
-        # If it's a deposit, update user's balance
+        # Handle deposits and withdrawals differently
         if transaction['type'] == 'deposit':
+            # For deposits, update user's balance
             balance_result = mongo_client.pos.users.update_one(
                 {'_id': user_id},
                 {'$inc': {'balance': float(transaction['amount'])}}
@@ -256,45 +278,26 @@ def verify_user(user_id):
 def admin_reset_password():
     try:
         print("\n=== Processing Admin Password Reset ===")
-        print(f"Request Headers: {dict(request.headers)}")
-        print(f"Request Method: {request.method}")
-        print(f"Request URL: {request.url}")
-        print(f"Request Path: {request.path}")
-        
         data = request.get_json()
-        print(f"Request Data: {data}")
         
-        if not data:
-            print("No JSON data received")
-            return jsonify({'message': 'No data provided'}), 400
-            
-        if 'phone' not in data:
-            print("No phone number in request")
+        if not data or 'phone' not in data:
             return jsonify({'message': 'Phone number is required'}), 400
 
-        # Clean and format the phone number - remove all spaces and ensure + prefix
+        # Clean and format the phone number
         phone = data['phone'].replace(" ", "").strip()
         if not phone.startswith('+'):
             phone = '+' + phone
-        print(f"Looking for user with formatted phone: {phone}")
 
-        # Find the user by phone number
+        # Find the user
         user = mongo_client.pos.users.find_one({'phone': phone})
         if not user:
-            print(f"No user found with phone: {phone}")
-            # Let's check what users exist in the database
-            all_users = list(mongo_client.pos.users.find({}, {'phone': 1, '_id': 0}))
-            print(f"Available users in database: {all_users}")
             return jsonify({'message': 'User not found'}), 404
 
-        print(f"Found user: {user['_id']}")
-        # Generate a temporary password (8 characters)
+        # Generate and hash temporary password
         temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-        
-        # Hash the temporary password
         hashed_password = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt())
         
-        # Update user's password and set temporary password flag
+        # Update user's password
         update_result = mongo_client.pos.users.update_one(
             {'_id': user['_id']},
             {
@@ -306,15 +309,25 @@ def admin_reset_password():
         )
 
         if update_result.modified_count == 0:
-            print("Failed to update user password")
             return jsonify({'message': 'Failed to update password'}), 500
+
+        # Store reset history
+        reset_record = {
+            'userId': user['_id'],
+            'username': user.get('username', ''),
+            'phone': phone,
+            'temporaryPassword': temp_password,
+            'resetAt': datetime.utcnow(),
+            'isUsed': False
+        }
+        mongo_client.pos.password_resets.insert_one(reset_record)
 
         print("Password reset successful")
         return jsonify({
             'message': 'Temporary password generated successfully',
             'temporaryPassword': temp_password,
             'username': user.get('username', ''),
-            'phone': user.get('phone', '')
+            'phone': phone
         }), 200
 
     except Exception as e:
@@ -322,6 +335,234 @@ def admin_reset_password():
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'message': 'Internal server error'}), 500
+
+@app.route('/api/admin/reset-password/history', methods=['GET'])
+@admin_required
+def get_password_reset_history():
+    try:
+        # Get the last 10 password resets, sorted by resetAt in descending order
+        resets = list(mongo_client.pos.password_resets.find().sort('resetAt', -1).limit(10))
+        
+        # Format the response
+        formatted_resets = []
+        for reset in resets:
+            formatted_resets.append({
+                '_id': str(reset['_id']),
+                'userId': str(reset['userId']),
+                'username': reset['username'],
+                'phone': reset['phone'],
+                'temporaryPassword': reset['temporaryPassword'],
+                'resetAt': reset['resetAt'].isoformat(),
+                'isUsed': reset['isUsed']
+            })
+            
+        return jsonify({'history': formatted_resets}), 200
+
+    except Exception as e:
+        print('Error in get_password_reset_history:', str(e))
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'message': 'Failed to fetch password reset history'}), 500
+
+@app.route('/api/admin/stats', methods=['GET'])
+@admin_required
+def get_admin_stats():
+    try:
+        print("\n=== Fetching Admin Stats ===")
+        
+        # Get total users
+        total_users = mongo_client.pos.users.count_documents({})
+        print(f"Total users: {total_users}")
+        
+        # Get total investments
+        investments_pipeline = [
+            {
+                '$match': {
+                    'status': {'$ne': 'closed'}  # Only count active investments
+                }
+            },
+            {
+                '$group': {
+                    '_id': None,
+                    'total': {'$sum': '$amount'}
+                }
+            }
+        ]
+        total_investments = list(mongo_client.pos.investments.aggregate(investments_pipeline))
+        total_investments_amount = total_investments[0]['total'] if total_investments else 0
+        print(f"Total investments: {total_investments_amount}")
+        
+        # Get total transactions (deposits and withdrawals)
+        transactions_pipeline = [
+            {
+                '$match': {
+                    'status': 'approved'
+                }
+            },
+            {
+                '$group': {
+                    '_id': '$type',
+                    'total': {'$sum': '$amount'}
+                }
+            }
+        ]
+        transaction_totals = {doc['_id']: doc['total'] 
+                            for doc in mongo_client.pos.transactions.aggregate(transactions_pipeline)}
+        print(f"Transaction totals by type: {transaction_totals}")
+        
+        # Calculate total transaction volume (deposits + withdrawals)
+        total_transactions_amount = sum(transaction_totals.values())
+        print(f"Total transaction volume: {total_transactions_amount}")
+        
+        # Get total pending transactions
+        pending_transactions = mongo_client.pos.transactions.count_documents({'status': 'pending'})
+        print(f"Pending transactions: {pending_transactions}")
+        
+        # Get total pending verifications
+        pending_verifications = mongo_client.pos.users.count_documents({'isVerified': False})
+        print(f"Pending verifications: {pending_verifications}")
+        
+        # Get active users (users with balance > 0 or active investments)
+        active_users = mongo_client.pos.users.count_documents({
+            '$or': [
+                {'balance': {'$gt': 0}},
+                {'investments': {'$exists': True, '$ne': []}}
+            ]
+        })
+        print(f"Active users: {active_users}")
+        
+        stats = {
+            'totalUsers': total_users,
+            'activeUsers': active_users,
+            'totalInvestments': total_investments_amount,
+            'totalTransactions': total_transactions_amount,
+            'pendingTransactions': pending_transactions,
+            'pendingVerifications': pending_verifications,
+            'transactionsByType': transaction_totals
+        }
+        print(f"Returning stats: {stats}")
+        
+        return jsonify(stats), 200
+
+    except Exception as e:
+        print('Error in get_admin_stats:', str(e))
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'message': 'Failed to fetch admin stats'}), 500
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def get_all_users():
+    try:
+        # Use aggregation to get user details with investment and referral counts
+        pipeline = [
+            {
+                '$lookup': {
+                    'from': 'investments',
+                    'localField': '_id',
+                    'foreignField': 'userId',
+                    'as': 'investments'
+                }
+            },
+            {
+                '$lookup': {
+                    'from': 'users',
+                    'localField': '_id',
+                    'foreignField': 'referredBy',
+                    'as': 'directReferrals'
+                }
+            },
+            {
+                '$addFields': {
+                    'totalInvestments': {
+                        '$sum': '$investments.amount'
+                    },
+                    'activeInvestments': {
+                        '$size': {
+                            '$filter': {
+                                'input': '$investments',
+                                'as': 'investment',
+                                'cond': {'$eq': ['$$investment.status', 'active']}
+                            }
+                        }
+                    },
+                    'referralCount': {'$size': '$directReferrals'},
+                    'balance': {'$ifNull': ['$balance', 0]},
+                    'isActive': {'$ifNull': ['$isActive', False]},
+                    'isVerified': {'$ifNull': ['$isVerified', False]},
+                }
+            },
+            {
+                '$project': {
+                    '_id': {'$toString': '$_id'},
+                    'username': 1,
+                    'email': 1,
+                    'phone': 1,
+                    'balance': 1,
+                    'totalInvestments': 1,
+                    'activeInvestments': 1,
+                    'referralCount': 1,
+                    'isActive': 1,
+                    'isVerified': 1,
+                    'createdAt': 1,
+                    'updatedAt': 1,
+                    'referredBy': {
+                        '$cond': {
+                            'if': '$referredBy',
+                            'then': {'$toString': '$referredBy'},
+                            'else': None
+                        }
+                    }
+                }
+            }
+        ]
+        
+        # Execute the aggregation pipeline
+        users = list(mongo_client.pos.users.aggregate(pipeline))
+        
+        print(f"Found {len(users)} users")
+        if users:
+            print(f"Sample user data: {users[0]}")
+        
+        return jsonify({
+            'users': users,
+            'total': len(users)
+        }), 200
+
+    except Exception as e:
+        print('Error in get_all_users:', str(e))
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'message': 'Failed to fetch users'}), 500
+
+@app.route('/api/admin/users/<user_id>', methods=['DELETE'])
+@admin_required
+def delete_user(user_id):
+    try:
+        # Check if user exists
+        user = mongo_client.pos.users.find_one({'_id': ObjectId(user_id)})
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        # Delete user's transactions
+        mongo_client.pos.transactions.delete_many({'userId': ObjectId(user_id)})
+        
+        # Delete user's investments
+        mongo_client.pos.investments.delete_many({'userId': ObjectId(user_id)})
+        
+        # Delete the user
+        result = mongo_client.pos.users.delete_one({'_id': ObjectId(user_id)})
+        
+        if result.deleted_count == 0:
+            return jsonify({'message': 'Failed to delete user'}), 500
+            
+        return jsonify({'message': 'User deleted successfully'}), 200
+
+    except Exception as e:
+        print('Error in delete_user:', str(e))
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'message': 'Failed to delete user'}), 500
 
 # Admin routes for fetching data
 @app.route('/api/admin/transactions/pending', methods=['GET'])
@@ -419,6 +660,111 @@ def get_pending_verifications():
     except Exception as e:
         print(f"Error fetching pending verifications: {str(e)}")
         return jsonify({'message': 'Failed to fetch pending verifications'}), 500
+
+@app.route('/api/admin/transactions', methods=['GET'])
+@admin_required
+def get_all_transactions():
+    try:
+        print("\n=== Fetching Admin Transactions ===")
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 10))
+        status = request.args.get('status')
+        txn_type = request.args.get('type')  # Renamed to avoid shadowing built-in type()
+        
+        print(f"Query params - page: {page}, limit: {limit}, status: {status}, type: {txn_type}")
+        
+        # Calculate skip
+        skip = (page - 1) * limit
+        
+        # Build query
+        query = {}
+        if status and status != "all":
+            query['status'] = status
+        if txn_type and txn_type != "all":
+            query['type'] = txn_type
+            
+        print(f"MongoDB query: {query}")
+        
+        try:
+            # Get total count for pagination
+            total_count = mongo_client.pos.transactions.count_documents(query)
+            print(f"Total matching transactions: {total_count}")
+        except Exception as e:
+            print(f"Error counting documents: {str(e)}")
+            raise
+
+        try:
+            # First get a sample transaction to debug the userId format
+            sample_transaction = mongo_client.pos.transactions.find_one()
+            if sample_transaction:
+                print(f"Sample transaction fields: {list(sample_transaction.keys())}")
+                user_id = sample_transaction.get('user_id')  # Using get() with no default
+                print(f"Sample transaction user_id: {user_id} ({type(user_id).__name__ if user_id is not None else 'None'})")
+        except Exception as e:
+            print(f"Error getting sample transaction: {str(e)}")
+            raise
+            
+        # Get transactions with user details
+        pipeline = [
+            {'$match': query},
+            {'$sort': {'createdAt': -1}},
+            {'$skip': skip},
+            {'$limit': limit},
+            {
+                '$lookup': {
+                    'from': 'users',
+                    'localField': 'user_id',
+                    'foreignField': '_id',
+                    'as': 'user'
+                }
+            },
+            {'$unwind': {'path': '$user', 'preserveNullAndEmptyArrays': True}},
+            {
+                '$project': {
+                    '_id': {'$toString': '$_id'},
+                    'userId': {'$toString': '$user_id'},
+                    'type': 1,
+                    'amount': 1,
+                    'status': 1,
+                    'createdAt': {'$toString': '$createdAt'},
+                    'updatedAt': {'$toString': '$updatedAt'},
+                    'username': {'$ifNull': ['$user.username', 'Unknown User']},
+                    'phone': {'$ifNull': ['$user.phone', '-']},
+                    'paymentMethod': 1,
+                    'transactionId': 1,
+                    'reference': 1
+                }
+            }
+        ]
+        
+        print("Executing aggregation pipeline...")
+        try:
+            transactions = list(mongo_client.pos.transactions.aggregate(pipeline))
+            print(f"Found {len(transactions)} transactions for current page")
+            
+            # Debug first transaction's user info
+            if transactions:
+                first_transaction = transactions[0]
+                print(f"First transaction user info: username={first_transaction.get('username', 'Unknown')}, phone={first_transaction.get('phone', '-')}")
+        except Exception as e:
+            print(f"Error in aggregation pipeline: {str(e)}")
+            raise
+        
+        response_data = {
+            'transactions': transactions,
+            'total': total_count,
+            'page': page,
+            'totalPages': (total_count + limit - 1) // limit
+        }
+        
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        print('Error in get_all_transactions:', str(e))
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'message': 'Failed to fetch transactions', 'error': str(e)}), 500
 
 # MongoDB connection with retry
 def connect_to_mongodb():
@@ -904,6 +1250,55 @@ def login():
         print("Traceback:", traceback.format_exc())
         return jsonify({'error': 'Login failed'}), 500
 
+def calculate_withdrawable_amount(user_id):
+    """Calculate total withdrawable amount (ROI + referral earnings) for a user"""
+    try:
+        # Get all active investments and their profits
+        investments = list(db.investments.find({
+            'userId': ObjectId(user_id),
+            'status': 'active'
+        }))
+        total_roi = sum(float(inv.get('profit', 0)) for inv in investments)
+        
+        # Get all referral earnings
+        referral_rewards = db.referral_history.aggregate([
+            {'$match': {'referrerId': ObjectId(user_id)}},
+            {'$group': {
+                '_id': None,
+                'total': {'$sum': '$amount'}
+            }}
+        ])
+        
+        total_referrals = next(referral_rewards, {'total': 0})['total']
+        
+        # Get total approved and pending withdrawals
+        withdrawals = db.transactions.aggregate([
+            {
+                '$match': {
+                    'user_id': ObjectId(user_id),
+                    'type': 'withdrawal',
+                    'withdrawalType': 'earnings',
+                    'status': {'$in': ['approved', 'pending']}
+                }
+            },
+            {
+                '$group': {
+                    '_id': None,
+                    'total': {'$sum': '$amount'}
+                }
+            }
+        ])
+        
+        total_withdrawals = next(withdrawals, {'total': 0})['total']
+        
+        # Calculate final withdrawable amount
+        withdrawable = float(total_roi + total_referrals - total_withdrawals)
+        return max(withdrawable, 0)  # Ensure we don't return negative values
+        
+    except Exception as e:
+        print(f"Error calculating withdrawable amount: {str(e)}")
+        return 0.0
+
 @app.route('/api/auth/verify', methods=['GET'])
 @login_required
 def verify():
@@ -927,11 +1322,16 @@ def verify():
             print("User not found in database")
             return jsonify({'error': 'User not found'}), 401
 
+        # Calculate withdrawable amount
+        withdrawable = calculate_withdrawable_amount(user_id)
+        print(f"Calculated withdrawable amount: {withdrawable}")
+
         user_response = {
             '_id': str(user['_id']),
             'username': user.get('username'),
             'phone': user.get('phone'),
             'balance': user.get('balance', 0),
+            'withdrawable': withdrawable,
             'referralCode': user.get('referralCode'),
             'isActive': user.get('isActive', True),
             'isAdmin': user.get('isAdmin', False),
@@ -1063,22 +1463,25 @@ def initiate_withdrawal():
         if not amount or amount <= 0:
             return jsonify({'error': 'Invalid amount'}), 400
             
-        # Get user to check balance
-        user = db.users.find_one({'_id': ObjectId(session['user_id'])})
+        # Get user data and calculate withdrawable amount
+        user_id = session['user_id']
+        user = db.users.find_one({'_id': ObjectId(user_id)})
         if not user:
             return jsonify({'error': 'User not found'}), 404
             
-        if amount > user.get('balance', 0):
-            return jsonify({'error': 'Insufficient balance'}), 400
+        withdrawable = calculate_withdrawable_amount(user_id)
+        if amount > withdrawable:
+            return jsonify({'error': 'Insufficient withdrawable amount'}), 400
             
         current_time = datetime.utcnow()
         transaction = {
-            'user_id': ObjectId(session['user_id']),
+            'user_id': ObjectId(user_id),
             'type': 'withdrawal',
             'amount': amount,
             'status': 'pending',
             'createdAt': current_time,
-            'updatedAt': current_time
+            'updatedAt': current_time,
+            'withdrawalType': 'earnings'  # New field to indicate this is from earnings
         }
         
         result = db.transactions.insert_one(transaction)
@@ -1086,10 +1489,11 @@ def initiate_withdrawal():
         # Format response
         transaction_response = {
             '_id': str(result.inserted_id),
-            'user_id': session['user_id'],
+            'user_id': user_id,
             'type': 'withdrawal',
             'amount': amount,
             'status': 'pending',
+            'withdrawalType': 'earnings',
             'createdAt': current_time.isoformat(),
             'updatedAt': current_time.isoformat()
         }
@@ -1255,20 +1659,19 @@ def create_investment():
                 # One-time reward for the specific forex pair
                 one_time_reward = FOREX_REFERRAL_REWARDS.get(forex_pair, 0)
                 
-                # Check if this is the first investment for this pair
-                existing_investments = db.investments.find_one({
+                # Check if referrer has already received a one-time reward for this referee
+                existing_one_time_reward = db.referral_history.find_one({
+                    'referrerId': referrer['_id'],
                     'userId': ObjectId(user_id),
-                    'forexPair': forex_pair,
-                    '_id': {'$ne': result.inserted_id}  # Exclude the current investment
+                    'type': 'one_time_reward'
                 })
                 
-                if not existing_investments and one_time_reward > 0:
+                if not existing_one_time_reward and one_time_reward > 0:
                     # Credit one-time reward to direct referrer
                     db.users.update_one(
                         {'_id': referrer['_id']},
                         {'$inc': {'balance': one_time_reward}}
                     )
-                    print(f"Credited one-time reward {one_time_reward} to referrer {referrer['_id']} for {forex_pair}")
                     
                     # Record the reward in referral history
                     db.referral_history.insert_one({
@@ -1279,7 +1682,6 @@ def create_investment():
                         'amount': one_time_reward,
                         'createdAt': current_time
                     })
-                    print(f"Recorded one-time reward: {one_time_reward} for {forex_pair}")
 
                 # Daily commission calculation will be handled by a separate cron job
                 # that calculates earnings based on the daily ROI of referred users' investments
@@ -1457,19 +1859,17 @@ def get_referral_history():
             one_time_rewards = sum(reward.get('amount', 0) 
                 for reward in db.referral_history.find({
                     'referrerId': ObjectId(user_id),
-                    'userId': ref['_id'],  # Changed from userId to referredId
+                    'userId': ref['_id'],
                     'type': 'one_time_reward'
-                })
-            )
+                }))
             
             # Get daily commissions for this referral
             daily_commissions = sum(reward.get('amount', 0)
                 for reward in db.referral_history.find({
                     'referrerId': ObjectId(user_id),
-                    'referredId': ref['_id'],  # Changed from userId to referredId
+                    'referredId': ref['_id'],
                     'type': 'daily_commission'
-                })
-            )
+                }))
             
             referrals.append({
                 '_id': str(ref['_id']),
@@ -1492,18 +1892,16 @@ def get_referral_history():
                 l2_one_time = sum(reward.get('amount', 0)
                     for reward in db.referral_history.find({
                         'referrerId': ObjectId(user_id),
-                        'referredId': l2_ref['_id'],  # Changed from userId to referredId
+                        'referredId': l2_ref['_id'],
                         'type': 'one_time_reward'
-                    })
-                )
+                    }))
                 
                 l2_daily = sum(reward.get('amount', 0)
                     for reward in db.referral_history.find({
                         'referrerId': ObjectId(user_id),
-                        'referredId': l2_ref['_id'],  # Changed from userId to referredId
+                        'referredId': l2_ref['_id'],
                         'type': 'daily_commission'
-                    })
-                )
+                    }))
                 
                 referrals.append({
                     '_id': str(l2_ref['_id']),
@@ -1526,18 +1924,16 @@ def get_referral_history():
                     l3_one_time = sum(reward.get('amount', 0)
                         for reward in db.referral_history.find({
                             'referrerId': ObjectId(user_id),
-                            'referredId': l3_ref['_id'],  # Changed from userId to referredId
+                            'referredId': l3_ref['_id'],
                             'type': 'one_time_reward'
-                        })
-                    )
+                        }))
                     
                     l3_daily = sum(reward.get('amount', 0)
                         for reward in db.referral_history.find({
                             'referrerId': ObjectId(user_id),
-                            'referredId': l3_ref['_id'],  # Changed from userId to referredId
+                            'referredId': l3_ref['_id'],
                             'type': 'daily_commission'
-                        })
-                    )
+                        }))
                     
                     referrals.append({
                         '_id': str(l3_ref['_id']),

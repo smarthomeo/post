@@ -130,13 +130,14 @@ const Profile = () => {
           <CardHeader className="space-y-2">
             <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
               <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
-              Balance
+              Earnings
             </CardTitle>
-            <CardDescription className="text-sm">Your current account balance</CardDescription>
+            <CardDescription className="text-sm">Your withdrawable earnings</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-center">
-              <p className="text-2xl sm:text-3xl font-bold text-primary">KES {(user.balance || 0).toLocaleString()}</p>
+              <p className="text-2xl sm:text-3xl font-bold text-purple-600">KES {(user.withdrawable || 0).toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground mt-1">ROI + Referrals</p>
             </div>
           </CardContent>
         </Card>
@@ -188,7 +189,7 @@ const Profile = () => {
       <WithdrawModal 
         isOpen={showWithdrawModal}
         onClose={() => setShowWithdrawModal(false)}
-        userBalance={user?.balance || 0}
+        withdrawableAmount={user?.withdrawable || 0}
         userPhone={user?.phone || ''}
       />
     </div>

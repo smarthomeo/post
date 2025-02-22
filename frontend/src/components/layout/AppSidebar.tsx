@@ -52,6 +52,14 @@ export function AppSidebar() {
   const location = useLocation();
   const sidebar = useSidebar();
 
+  const handleNavigation = () => {
+    if (sidebar.isMobile) {
+      sidebar.setOpenMobile(false);
+    } else if (sidebar.open) {
+      sidebar.setOpen(false);
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -69,7 +77,11 @@ export function AppSidebar() {
                     asChild
                     isActive={location.pathname === item.path}
                   >
-                    <Link to={item.path} className="flex items-center gap-2">
+                    <Link 
+                      to={item.path} 
+                      className="flex items-center gap-2"
+                      onClick={handleNavigation}
+                    >
                       <item.icon className="h-4 w-4" />
                       <span>{item.title}</span>
                     </Link>
