@@ -19,7 +19,7 @@ interface DepositModalProps {
 }
 
 const TILL_NUMBER = "3232476"; // Replace with your actual till number
-const TELEGRAM_GROUP_LINK = "https://t.me/+254747275132"; // Replace with your actual Telegram group link
+const TELEGRAM_GROUP_LINK = "https://t.me/estrellabluesky"; // Replace with your actual Telegram group link
 
 export default function DepositModal({ isOpen, onClose }: DepositModalProps) {
   const [amount, setAmount] = useState("");

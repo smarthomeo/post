@@ -131,7 +131,7 @@ const AuthForm = () => {
                     )}
                     <div className="text-right">
                       <a
-                        href="https://t.me/blueskyinvestments"
+                        href="https://t.me/estrellabluesky"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-primary hover:text-primary/90 transition-colors duration-200 hover:underline"

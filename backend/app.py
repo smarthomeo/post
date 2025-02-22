@@ -1956,6 +1956,57 @@ def get_referral_history():
         print(f"Get referral history error: {str(e)}")
         return jsonify({'error': 'Failed to fetch referral history'}), 500
 
+@app.route('/api/auth/change-password', methods=['POST'])
+@login_required
+def change_password():
+    try:
+        data = request.get_json()
+        current_password = data.get('currentPassword')
+        new_password = data.get('newPassword')
+
+        if not current_password or not new_password:
+            return jsonify({'error': 'Current password and new password are required'}), 400
+
+        # Get the current user
+        user = db.users.find_one({'_id': ObjectId(session['user_id'])})
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Verify current password
+        stored_password = user.get('password')
+        if not stored_password:
+            return jsonify({'error': 'Invalid credentials'}), 401
+
+        if isinstance(stored_password, str):
+            stored_password = stored_password.encode('utf-8')
+
+        try:
+            password_matches = bcrypt.checkpw(current_password.encode('utf-8'), stored_password)
+        except Exception as e:
+            print(f"Password check error: {str(e)}")
+            return jsonify({'error': 'Invalid credentials'}), 401
+
+        if not password_matches:
+            return jsonify({'error': 'Current password is incorrect'}), 401
+
+        # Hash and update new password
+        hashed_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        
+        # Update user's password
+        update_result = db.users.update_one(
+            {'_id': ObjectId(session['user_id'])},
+            {'$set': {'password': hashed_password}}
+        )
+
+        if update_result.modified_count == 0:
+            return jsonify({'error': 'Failed to update password'}), 500
+
+        return jsonify({'message': 'Password updated successfully'}), 200
+
+    except Exception as e:
+        print(f"Error in change_password: {str(e)}")
+        return jsonify({'error': 'Failed to change password'}), 500
+
 if __name__ == '__main__':
     from scheduler import start_scheduler
     scheduler = start_scheduler()

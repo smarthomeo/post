@@ -15,20 +15,15 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import PasswordChangeForm from "@/components/auth/PasswordChangeForm";
 
 export default function Support() {
   const { toast } = useToast();
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
 
   const handleTelegramChat = () => {
-    window.open('https://t.me/@estrellabluesky', '_blank');
-  };
-
-  const handlePasswordReset = () => {
-    // This would typically integrate with your password reset flow
-    toast({
-      title: "Password Reset",
-      description: "Please check your email for password reset instructions.",
-    });
+    window.open('https://t.me/estrellabluesky', '_blank');
   };
 
   return (
@@ -39,7 +34,7 @@ export default function Support() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -63,22 +58,33 @@ export default function Support() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Lock className="h-5 w-5 text-primary" />
-              Password Reset
+              Password Change
             </CardTitle>
-            <CardDescription>Reset your account password</CardDescription>
+            <CardDescription>Change your account password</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button 
-              variant="outline" 
-              className="w-full"
-              onClick={handlePasswordReset}
-            >
-              Reset Password
-            </Button>
+            {showPasswordForm ? (
+              <div className="space-y-4">
+                <PasswordChangeForm />
+                <Button 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={() => setShowPasswordForm(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => setShowPasswordForm(true)}
+              >
+                Change Password
+              </Button>
+            )}
           </CardContent>
         </Card>
-
-        
       </div>
 
       {/* FAQs */}
@@ -127,8 +133,6 @@ export default function Support() {
             <Button variant="link" className="h-auto p-0">API Documentation</Button>
           </CardContent>
         </Card>
-
-        
       </div>
     </div>
   );
