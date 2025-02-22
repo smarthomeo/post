@@ -2,18 +2,12 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { adminApi } from '@/services/api';
+import { PasswordReset } from '@/components/admin/PasswordReset';
+import { DashboardStats } from '@/components/admin/DashboardStats';
+import { UserManagement } from '@/components/admin/UserManagement';
 
 // Consider data fresh for 10 seconds
 const STALE_TIME = 1000 * 10;
@@ -29,9 +23,32 @@ interface Transaction {
   username: string;
 }
 
+interface User {
+  _id: string;
+  username: string;
+  phone: string;
+  balance: number;
+  isActive: boolean;
+  isVerified: boolean;
+  createdAt: string;
+  totalInvestments: number;
+  referralCount: number;
+}
+
 export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch all users
+  const { data: users = [], isLoading: isUsersLoading } = useQuery({
+    queryKey: ['adminUsers'],
+    queryFn: async () => {
+      const response = await adminApi.getUsers();
+      return response.users || [];
+    },
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+  });
 
   // Fetch pending transactions
   const { data: pendingTransactions = [], isLoading: isTransactionsLoading } = useQuery({
@@ -54,6 +71,14 @@ export default function AdminDashboard() {
     staleTime: STALE_TIME,
     refetchOnWindowFocus: false,
   });
+
+  // Calculate dashboard stats
+  const stats = {
+    totalUsers: users.length,
+    activeUsers: users.filter(user => user.isActive).length,
+    totalInvestments: users.reduce((sum, user) => sum + (user.totalInvestments || 0), 0),
+    totalTransactions: pendingTransactions.length,
+  };
 
   const handleApproveTransaction = async (transactionId: string) => {
     try {
@@ -100,6 +125,38 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await adminApi.deleteUser(userId);
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      toast({
+        description: 'User deleted successfully',
+      });
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        description: 'Failed to delete user',
+      });
+    }
+  };
+
+  const handleResetPassword = async (userId: string, phone: string) => {
+    try {
+      const response = await adminApi.resetPassword(phone);
+      queryClient.invalidateQueries({ queryKey: ['adminUsers'] });
+      toast({
+        description: 'Password reset successful',
+      });
+      return response;
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        description: 'Failed to reset password',
+      });
+      throw error;
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-KE', {
       year: 'numeric',
@@ -119,12 +176,25 @@ export default function AdminDashboard() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <Tabs defaultValue="transactions" className="space-y-6">
+    <div className="container mx-auto px-4 py-8 max-w-7xl space-y-8">
+      <DashboardStats {...stats} />
+
+      <Tabs defaultValue="users" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="verifications">Verifications</TabsTrigger>
+          <TabsTrigger value="password-reset">Password Reset</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="users">
+          <UserManagement
+            users={users}
+            isLoading={isUsersLoading}
+            onDeleteUser={handleDeleteUser}
+            onResetPassword={handleResetPassword}
+          />
+        </TabsContent>
 
         <TabsContent value="transactions">
           <Card>
@@ -140,69 +210,60 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {pendingTransactions.map((transaction: Transaction) => (
-                        <TableRow key={transaction._id}>
-                          <TableCell>
+                        <tr key={transaction._id}>
+                          <td>
                             <div className="flex flex-col">
                               <span className="font-medium">{transaction.username}</span>
                               <span className="text-sm text-muted-foreground">
                                 {transaction.phone}
                               </span>
                             </div>
-                          </TableCell>
-                          <TableCell>
+                          </td>
+                          <td>
                             <Badge variant={transaction.type === 'deposit' ? 'default' : 'secondary'}>
                               {transaction.type}
                             </Badge>
-                          </TableCell>
-                          <TableCell>{formatCurrency(transaction.amount)}</TableCell>
-                          <TableCell>{formatDate(transaction.createdAt)}</TableCell>
-                          <TableCell>
-                            <Badge 
-                              variant={
-                                transaction.status === 'pending' 
-                                  ? 'default' 
-                                  : transaction.status === 'approved' 
-                                  ? 'success' 
-                                  : 'destructive'
-                              }
-                            >
+                          </td>
+                          <td>{formatCurrency(transaction.amount)}</td>
+                          <td>{formatDate(transaction.createdAt)}</td>
+                          <td>
+                            <Badge variant="outline">
                               {transaction.status}
                             </Badge>
-                          </TableCell>
-                          <TableCell>
+                          </td>
+                          <td>
                             <div className="flex gap-2">
-                              <Button
-                                size="sm"
+                              <button
                                 onClick={() => handleApproveTransaction(transaction._id)}
+                                className="px-3 py-1 bg-green-500 text-white rounded-md"
                               >
                                 Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
+                              </button>
+                              <button
                                 onClick={() => handleRejectTransaction(transaction._id)}
+                                className="px-3 py-1 bg-red-500 text-white rounded-md"
                               >
                                 Reject
-                              </Button>
+                              </button>
                             </div>
-                          </TableCell>
-                        </TableRow>
+                          </td>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>
@@ -223,46 +284,52 @@ export default function AdminDashboard() {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>User</TableHead>
-                        <TableHead>Phone</TableHead>
-                        <TableHead>Joined</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th>User</th>
+                        <th>Phone</th>
+                        <th>Joined</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {pendingVerifications.map((user: any) => (
-                        <TableRow key={user._id}>
-                          <TableCell>
+                        <tr key={user._id}>
+                          <td>
                             <span className="font-medium">{user.username}</span>
-                          </TableCell>
-                          <TableCell>{user.phone}</TableCell>
-                          <TableCell>{formatDate(user.createdAt)}</TableCell>
-                          <TableCell>
-                            <Badge variant={user.isVerified ? 'success' : 'default'}>
+                          </td>
+                          <td>{user.phone}</td>
+                          <td>{formatDate(user.createdAt)}</td>
+                          <td>
+                            <Badge variant={user.isVerified ? 'secondary' : 'default'}>
                               {user.isVerified ? 'Verified' : 'Pending'}
                             </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
+                          </td>
+                          <td>
+                            <button
                               onClick={() => handleVerifyUser(user._id)}
                               disabled={user.isVerified}
+                              className="px-3 py-1 bg-primary text-white rounded-md disabled:opacity-50"
                             >
                               Verify
-                            </Button>
-                          </TableCell>
-                        </TableRow>
+                            </button>
+                          </td>
+                        </tr>
                       ))}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="password-reset">
+          <div className="max-w-3xl mx-auto">
+            <PasswordReset />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

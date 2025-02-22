@@ -127,13 +127,76 @@ export const referralApi = {
 };
 
 export const adminApi = {
-  getPendingTransactions: () => fetchApi('/admin/transactions/pending'),
-  
-  getPendingVerifications: () => fetchApi('/admin/verifications/pending'),
-  
-  approveTransaction: (transactionId: string) => fetchApi(`/admin/transactions/${transactionId}/approve`, { method: 'POST' }),
-  
-  rejectTransaction: (transactionId: string) => fetchApi(`/admin/transactions/${transactionId}/reject`, { method: 'POST' }),
-  
-  verifyUser: (userId: string) => fetchApi(`/admin/users/${userId}/verify`, { method: 'POST' }),
+  getPendingTransactions: async () => {
+    const response = await fetch(`${API_URL}/admin/transactions/pending`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch pending transactions');
+    return response.json();
+  },
+
+  getPendingVerifications: async () => {
+    const response = await fetch(`${API_URL}/admin/verifications/pending`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch pending verifications');
+    return response.json();
+  },
+
+  approveTransaction: async (transactionId: string) => {
+    const response = await fetch(`${API_URL}/admin/transactions/${transactionId}/approve`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to approve transaction');
+    return response.json();
+  },
+
+  rejectTransaction: async (transactionId: string) => {
+    const response = await fetch(`${API_URL}/admin/transactions/${transactionId}/reject`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to reject transaction');
+    return response.json();
+  },
+
+  verifyUser: async (userId: string) => {
+    const response = await fetch(`${API_URL}/admin/users/${userId}/verify`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to verify user');
+    return response.json();
+  },
+
+  getUsers: async () => {
+    const response = await fetch(`${API_URL}/admin/users`, {
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to fetch users');
+    return response.json();
+  },
+
+  deleteUser: async (userId: string) => {
+    const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+      method: 'DELETE',
+      credentials: 'include'
+    });
+    if (!response.ok) throw new Error('Failed to delete user');
+    return response.json();
+  },
+
+  resetPassword: async (phone: string) => {
+    const response = await fetch(`${API_URL}/admin/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ phone })
+    });
+    if (!response.ok) throw new Error('Failed to reset password');
+    return response.json();
+  }
 };

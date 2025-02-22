@@ -129,6 +129,16 @@ const AuthForm = () => {
                     {errors.password && touched.password && (
                       <p className="mt-1.5 text-sm text-red-500 font-medium">{errors.password}</p>
                     )}
+                    <div className="text-right">
+                      <a
+                        href="https://t.me/blueskyinvestments"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:text-primary/90 transition-colors duration-200 hover:underline"
+                      >
+                        Forgot Password?
+                      </a>
+                    </div>
                   </div>
                 </div>
 

@@ -54,7 +54,7 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when using HTTPS
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More compatible than 'None'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
-app.secret_key = os.getenv('JWT_SECRET', 'your-secret-key')
+app.secret_key = os.environ.get('JWT_SECRET', 'secure-auth-glass-secret-key-2025')
 
 # Override domain in production
 if os.getenv('FLASK_ENV') == 'production':
@@ -62,57 +62,363 @@ if os.getenv('FLASK_ENV') == 'production':
 
 Session(app)
 
-# Configure CORS
-allowed_origins = [
-    'http://localhost:5173',  # Development frontend
-    'http://159.223.105.44',  # Production frontend
-    'http://159.223.105.44:5173',  # Production frontend with port
-    'http://159.223.105.44:5000'  # Production backend
-]
-
-CORS(app,
+# CORS configuration
+CORS(app, 
      resources={
          r"/api/*": {
-             "origins": allowed_origins,
+             "origins": [os.environ.get('FRONTEND_URL', 'http://localhost:5173')],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-             "expose_headers": ["Content-Type", "Authorization", "Set-Cookie"],
+             "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
              "supports_credentials": True,
-             "send_wildcard": False,
              "max_age": 86400
          }
      },
      supports_credentials=True)
 
-# Add CORS headers to all responses
+# Update after_request handler
 @app.after_request
 def after_request(response):
-    origin = request.headers.get('Origin')
-    if origin in allowed_origins:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,Accept'
-        response.headers['Access-Control-Allow-Methods'] = 'GET,PUT,POST,DELETE,OPTIONS'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Expose-Headers'] = 'Set-Cookie'
-        response.headers['Access-Control-Max-Age'] = '86400'
-        
-        # Debug logging for CORS and cookies
-        print(f"=== Response Headers ===")
-        print(f"Origin: {origin}")
-        print(f"Headers: {dict(response.headers)}")
-        if 'Set-Cookie' in response.headers:
-            print(f"Cookies being set: {response.headers.getlist('Set-Cookie')}")
+    frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+    
+    # Remove any existing CORS headers to prevent duplication
+    response.headers.pop('Access-Control-Allow-Origin', None)
+    response.headers.pop('Access-Control-Allow-Headers', None)
+    response.headers.pop('Access-Control-Allow-Methods', None)
+    response.headers.pop('Access-Control-Allow-Credentials', None)
+    response.headers.pop('Access-Control-Max-Age', None)
+    
+    # Add CORS headers
+    response.headers['Access-Control-Allow-Origin'] = frontend_url
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
+    
+    # Log response headers for debugging
+    print("\n=== Response Headers ===")
+    print(dict(response.headers))
     
     return response
 
-# Add OPTIONS handlers for the admin routes
-@app.route('/api/admin/transactions/pending', methods=['OPTIONS'])
-def transactions_options():
-    return '', 200
+# Login required decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return jsonify({'message': 'Unauthorized'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
-@app.route('/api/admin/verifications/pending', methods=['OPTIONS'])
-def verifications_options():
-    return '', 200
+# Admin required decorator
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        print("\n=== Admin Authorization Check ===")
+        print(f"Session data: {dict(session)}")
+        
+        if 'user_id' not in session:
+            print("No user_id in session")
+            return jsonify({'message': 'Unauthorized'}), 401
+        
+        try:
+            user_id = session['user_id']
+            print(f"Checking admin status for user: {user_id}")
+            
+            user = mongo_client.pos.users.find_one({'_id': ObjectId(user_id)})
+            print(f"Found user: {user is not None}")
+            print(f"User admin status: {user.get('isAdmin') if user else None}")
+            
+            if not user or not user.get('isAdmin', False):
+                print("User is not an admin")
+                return jsonify({'message': 'Admin access required'}), 403
+                
+            print("Admin access granted")
+            return f(*args, **kwargs)
+        except Exception as e:
+            print(f"Error in admin check: {str(e)}")
+            return jsonify({'message': 'Admin check failed'}), 500
+    return decorated_function
+
+# Add OPTIONS handlers for all admin routes
+@app.route('/api/admin/transactions/<transaction_id>/approve', methods=['OPTIONS'])
+def approve_transaction_options(transaction_id):
+    response = app.make_default_options_response()
+    return response
+
+@app.route('/api/admin/transactions/<transaction_id>/reject', methods=['OPTIONS'])
+def reject_transaction_options(transaction_id):
+    response = app.make_default_options_response()
+    return response
+
+@app.route('/api/admin/users/<user_id>/verify', methods=['OPTIONS'])
+def verify_user_options(user_id):
+    response = app.make_default_options_response()
+    return response
+
+@app.route('/api/admin/reset-password', methods=['OPTIONS'])
+def admin_reset_password_options():
+    print("\n=== Handling OPTIONS request for admin reset password ===")
+    response = app.make_default_options_response()
+    return response
+
+# Admin routes
+@app.route('/api/admin/transactions/<transaction_id>/approve', methods=['POST'])
+@admin_required
+def approve_transaction(transaction_id):
+    try:
+        print(f"Approving transaction: {transaction_id}")
+        
+        # Find the transaction
+        transaction = mongo_client.pos.transactions.find_one({
+            '_id': ObjectId(transaction_id)
+        })
+        
+        if not transaction:
+            print(f"Transaction not found: {transaction_id}")
+            return jsonify({'message': 'Transaction not found'}), 404
+
+        print(f"Found transaction: {transaction}")
+
+        # Get user ID (handle both field names)
+        user_id = transaction.get('userId') or transaction.get('user_id')
+        if not user_id:
+            print("No user ID found in transaction")
+            return jsonify({'message': 'Invalid transaction: no user ID'}), 400
+
+        # Update transaction status
+        update_result = mongo_client.pos.transactions.update_one(
+            {'_id': ObjectId(transaction_id)},
+            {'$set': {'status': 'approved'}}
+        )
+        
+        if update_result.modified_count == 0:
+            print("Transaction status update failed")
+            return jsonify({'message': 'Failed to update transaction'}), 500
+
+        # If it's a deposit, update user's balance
+        if transaction['type'] == 'deposit':
+            balance_result = mongo_client.pos.users.update_one(
+                {'_id': user_id},
+                {'$inc': {'balance': float(transaction['amount'])}}
+            )
+            
+            if balance_result.modified_count == 0:
+                print("User balance update failed")
+                return jsonify({'message': 'Failed to update user balance'}), 500
+
+        print("Transaction approved successfully")
+        return jsonify({'message': 'Transaction approved successfully'}), 200
+
+    except Exception as e:
+        print(f"Error in approve_transaction: {str(e)}")
+        return jsonify({'message': 'Failed to approve transaction'}), 500
+
+@app.route('/api/admin/transactions/<transaction_id>/reject', methods=['POST'])
+@admin_required
+def reject_transaction(transaction_id):
+    try:
+        # Update transaction status
+        result = mongo_client.pos.transactions.update_one(
+            {'_id': ObjectId(transaction_id)},
+            {'$set': {'status': 'rejected'}}
+        )
+
+        if result.modified_count == 0:
+            return jsonify({'message': 'Transaction not found'}), 404
+
+        return jsonify({'message': 'Transaction rejected successfully'}), 200
+
+    except Exception as e:
+        print('Error in reject_transaction:', str(e))
+        return jsonify({'message': 'Failed to reject transaction'}), 500
+
+@app.route('/api/admin/users/<user_id>/verify', methods=['POST'])
+@admin_required
+def verify_user(user_id):
+    try:
+        # Update user verification status
+        result = mongo_client.pos.users.update_one(
+            {'_id': ObjectId(user_id)},
+            {'$set': {'isVerified': True}}
+        )
+
+        if result.modified_count == 0:
+            return jsonify({'message': 'User not found'}), 404
+
+        return jsonify({'message': 'User verified successfully'}), 200
+
+    except Exception as e:
+        print('Error in verify_user:', str(e))
+        return jsonify({'message': 'Failed to verify user'}), 500
+
+@app.route('/api/admin/reset-password', methods=['POST'])
+@admin_required
+def admin_reset_password():
+    try:
+        print("\n=== Processing Admin Password Reset ===")
+        print(f"Request Headers: {dict(request.headers)}")
+        print(f"Request Method: {request.method}")
+        print(f"Request URL: {request.url}")
+        print(f"Request Path: {request.path}")
+        
+        data = request.get_json()
+        print(f"Request Data: {data}")
+        
+        if not data:
+            print("No JSON data received")
+            return jsonify({'message': 'No data provided'}), 400
+            
+        if 'phone' not in data:
+            print("No phone number in request")
+            return jsonify({'message': 'Phone number is required'}), 400
+
+        # Clean and format the phone number - remove all spaces and ensure + prefix
+        phone = data['phone'].replace(" ", "").strip()
+        if not phone.startswith('+'):
+            phone = '+' + phone
+        print(f"Looking for user with formatted phone: {phone}")
+
+        # Find the user by phone number
+        user = mongo_client.pos.users.find_one({'phone': phone})
+        if not user:
+            print(f"No user found with phone: {phone}")
+            # Let's check what users exist in the database
+            all_users = list(mongo_client.pos.users.find({}, {'phone': 1, '_id': 0}))
+            print(f"Available users in database: {all_users}")
+            return jsonify({'message': 'User not found'}), 404
+
+        print(f"Found user: {user['_id']}")
+        # Generate a temporary password (8 characters)
+        temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        
+        # Hash the temporary password
+        hashed_password = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt())
+        
+        # Update user's password and set temporary password flag
+        update_result = mongo_client.pos.users.update_one(
+            {'_id': user['_id']},
+            {
+                '$set': {
+                    'password': hashed_password,
+                    'isTemporaryPassword': True
+                }
+            }
+        )
+
+        if update_result.modified_count == 0:
+            print("Failed to update user password")
+            return jsonify({'message': 'Failed to update password'}), 500
+
+        print("Password reset successful")
+        return jsonify({
+            'message': 'Temporary password generated successfully',
+            'temporaryPassword': temp_password,
+            'username': user.get('username', ''),
+            'phone': user.get('phone', '')
+        }), 200
+
+    except Exception as e:
+        print(f"Error in admin_reset_password: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'message': 'Internal server error'}), 500
+
+# Admin routes for fetching data
+@app.route('/api/admin/transactions/pending', methods=['GET'])
+@admin_required
+def get_pending_transactions():
+    try:
+        # Get all pending transactions with user details
+        pipeline = [
+            {
+                '$match': {
+                    'status': 'pending'
+                }
+            },
+            {
+                '$lookup': {
+                    'from': 'users',
+                    'localField': 'userId',
+                    'foreignField': '_id',
+                    'as': 'user'
+                }
+            },
+            {
+                '$unwind': {
+                    'path': '$user',
+                    'preserveNullAndEmptyArrays': True
+                }
+            },
+            {
+                '$project': {
+                    '_id': 1,
+                    'type': 1,
+                    'amount': 1,
+                    'status': 1,
+                    'createdAt': 1,
+                    'userId': 1,
+                    'username': '$user.username',
+                    'phone': '$user.phone'
+                }
+            }
+        ]
+        
+        transactions = list(mongo_client.pos.transactions.aggregate(pipeline))
+        
+        # Format the transactions for JSON serialization
+        formatted_transactions = []
+        for transaction in transactions:
+            formatted_transaction = {
+                '_id': str(transaction['_id']),
+                'type': transaction.get('type', ''),
+                'amount': float(transaction.get('amount', 0)),
+                'status': transaction.get('status', ''),
+                'createdAt': transaction.get('createdAt', datetime.utcnow()).isoformat() if isinstance(transaction.get('createdAt'), datetime) else str(transaction.get('createdAt', '')),
+                'userId': str(transaction.get('userId', '')),
+                'username': transaction.get('username', ''),
+                'phone': transaction.get('phone', '')
+            }
+            formatted_transactions.append(formatted_transaction)
+
+        print(f"Found {len(formatted_transactions)} pending transactions")
+        return jsonify({'transactions': formatted_transactions})
+    except Exception as e:
+        print(f"Error fetching pending transactions: {str(e)}")
+        return jsonify({'message': 'Failed to fetch pending transactions'}), 500
+
+@app.route('/api/admin/verifications/pending', methods=['GET'])
+@admin_required
+def get_pending_verifications():
+    try:
+        # Get users pending verification
+        users = list(mongo_client.pos.users.find(
+            {'isVerified': {'$ne': True}},
+            {
+                'password': 0,  # Exclude password from results
+                'balance': 0,   # Exclude balance for security
+            }
+        ))
+
+        # Format users for response
+        formatted_users = []
+        for user in users:
+            formatted_user = {
+                '_id': str(user['_id']),
+                'username': user.get('username', ''),
+                'phone': user.get('phone', ''),
+                'isVerified': user.get('isVerified', False),
+                'isActive': user.get('isActive', True),
+                'createdAt': user.get('createdAt', datetime.utcnow()).isoformat() if isinstance(user.get('createdAt'), datetime) else str(user.get('createdAt', '')),
+                'updatedAt': user.get('updatedAt', datetime.utcnow()).isoformat() if isinstance(user.get('updatedAt'), datetime) else str(user.get('updatedAt', ''))
+            }
+            if user.get('referredBy'):
+                formatted_user['referredBy'] = str(user['referredBy'])
+            formatted_users.append(formatted_user)
+
+        return jsonify({'verifications': formatted_users})
+    except Exception as e:
+        print(f"Error fetching pending verifications: {str(e)}")
+        return jsonify({'message': 'Failed to fetch pending verifications'}), 500
 
 # MongoDB connection with retry
 def connect_to_mongodb():
@@ -183,21 +489,6 @@ FOREX_REFERRAL_REWARDS = {
     'USD/CAD': 2500,
     'NZD/USD': 5000
 }
-
-# Authentication decorator
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        print(f"Session data in login_required: {dict(session)}")
-        print(f"Request cookies: {request.cookies}")
-        
-        if 'user_id' not in session:
-            print("No user_id in session")
-            return jsonify({'error': 'Unauthorized', 'message': 'Please log in'}), 401
-            
-        print(f"Found user_id in session: {session['user_id']}")
-        return f(*args, **kwargs)
-    return decorated_function
 
 def generate_referral_code():
     import random
@@ -469,208 +760,6 @@ def calculate_daily_roi_earnings():
         print(f"Error calculating daily ROI: {str(e)}")
         return False
 
-# Admin routes
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if request.method == 'OPTIONS':
-            response = app.make_default_options_response()
-            return response
-            
-        if 'user_id' not in session:
-            return jsonify({'error': 'Authentication required'}), 401
-            
-        user = db.users.find_one({'_id': ObjectId(session['user_id'])})
-        if not user or not user.get('isAdmin', False):
-            return jsonify({'error': 'Admin access required'}), 403
-            
-        return f(*args, **kwargs)
-    return decorated_function
-
-@app.route('/api/admin/transactions/pending', methods=['GET', 'OPTIONS'])
-@admin_required
-def get_pending_transactions():
-    if request.method == 'OPTIONS':
-        response = app.make_default_options_response()
-        return response
-    
-    try:
-        # Get all pending transactions with user details
-        pipeline = [
-            {
-                '$match': {
-                    'status': 'pending'
-                }
-            },
-            {
-                '$lookup': {
-                    'from': 'users',
-                    'localField': 'user_id',
-                    'foreignField': '_id',
-                    'as': 'user'
-                }
-            },
-            {
-                '$unwind': '$user'
-            },
-            {
-                '$project': {
-                    '_id': 1,
-                    'type': 1,
-                    'amount': 1,
-                    'status': 1,
-                    'createdAt': 1,
-                    'username': '$user.username',
-                    'phone': '$user.phone'
-                }
-            }
-        ]
-        
-        transactions = list(db.transactions.aggregate(pipeline))
-        
-        # Format the transactions for JSON serialization
-        formatted_transactions = []
-        for transaction in transactions:
-            formatted_transaction = {
-                '_id': str(transaction['_id']),
-                'type': transaction['type'],
-                'amount': float(transaction['amount']),
-                'status': transaction['status'],
-                'createdAt': transaction['createdAt'].isoformat() if isinstance(transaction.get('createdAt'), datetime) else str(transaction.get('createdAt', '')),
-                'username': transaction['username'],
-                'phone': transaction['phone']
-            }
-            formatted_transactions.append(formatted_transaction)
-            
-        response = jsonify({'transactions': formatted_transactions})
-        return response
-    except Exception as e:
-        print(f"Error fetching pending transactions: {str(e)}")
-        return jsonify({'error': 'Failed to fetch pending transactions'}), 500
-
-@app.route('/api/admin/verifications/pending', methods=['GET', 'OPTIONS'])
-@admin_required
-def get_pending_verifications():
-    if request.method == 'OPTIONS':
-        response = app.make_default_options_response()
-        return response
-        
-    try:
-        # Get users pending verification
-        users = list(db.users.find(
-            {'isVerified': {'$ne': True}},
-            {
-                'password': 0,  # Exclude password from results
-                'balance': 0,   # Exclude balance for security
-            }
-        ))
-        
-        # Format users for response
-        formatted_users = []
-        for user in users:
-            formatted_user = {
-                '_id': str(user['_id']),
-                'username': user.get('username', ''),
-                'phone': user.get('phone', ''),
-                'isVerified': user.get('isVerified', False),
-                'isActive': user.get('isActive', True),
-                'createdAt': user.get('createdAt', datetime.utcnow()).isoformat() if isinstance(user.get('createdAt'), datetime) else str(user.get('createdAt', '')),
-                'updatedAt': user.get('updatedAt', datetime.utcnow()).isoformat() if isinstance(user.get('updatedAt'), datetime) else str(user.get('updatedAt', ''))
-            }
-            if user.get('referredBy'):
-                formatted_user['referredBy'] = str(user['referredBy'])
-            formatted_users.append(formatted_user)
-            
-        response = jsonify({'verifications': formatted_users})
-        return response
-    except Exception as e:
-        print(f"Error fetching pending verifications: {str(e)}")
-        return jsonify({'error': 'Failed to fetch pending verifications'}), 500
-
-@app.route('/api/admin/transactions/<transaction_id>/approve', methods=['POST', 'OPTIONS'])
-@admin_required
-def approve_transaction(transaction_id):
-    if request.method == 'OPTIONS':
-        return '', 200
-        
-    try:
-        # Find and update the transaction
-        transaction = db.transactions.find_one_and_update(
-            {'_id': ObjectId(transaction_id), 'status': 'pending'},
-            {'$set': {'status': 'approved', 'approvedAt': datetime.utcnow()}},
-            return_document=True
-        )
-        
-        if not transaction:
-            return jsonify({'error': 'Transaction not found or already processed'}), 404
-            
-        # Update user balance based on transaction type
-        if transaction['type'] == 'deposit':
-            db.users.update_one(
-                {'_id': ObjectId(transaction['user_id'])},
-                {'$inc': {'balance': transaction['amount']}}
-            )
-        elif transaction['type'] == 'withdrawal':
-            # Deduct the amount for withdrawals
-            db.users.update_one(
-                {'_id': ObjectId(transaction['user_id'])},
-                {'$inc': {'balance': -transaction['amount']}}
-            )
-            
-        return jsonify({'message': 'Transaction approved successfully'})
-    except Exception as e:
-        print(f"Error approving transaction: {str(e)}")
-        return jsonify({'error': 'Failed to approve transaction'}), 500
-
-@app.route('/api/admin/transactions/<transaction_id>/reject', methods=['POST', 'OPTIONS'])
-@admin_required
-def reject_transaction(transaction_id):
-    if request.method == 'OPTIONS':
-        return '', 200
-        
-    try:
-        # Find and update the transaction
-        transaction = db.transactions.find_one_and_update(
-            {'_id': ObjectId(transaction_id), 'status': 'pending'},
-            {'$set': {'status': 'rejected', 'rejectedAt': datetime.utcnow()}},
-            return_document=True
-        )
-        
-        if not transaction:
-            return jsonify({'error': 'Transaction not found or already processed'}), 404
-            
-        return jsonify({'message': 'Transaction rejected successfully'})
-    except Exception as e:
-        print(f"Error rejecting transaction: {str(e)}")
-        return jsonify({'error': 'Failed to reject transaction'}), 500
-
-@app.route('/api/admin/users/<user_id>/verify', methods=['POST', 'OPTIONS'])
-@admin_required
-def verify_user(user_id):
-    if request.method == 'OPTIONS':
-        return '', 200
-        
-    try:
-        # Find and update the user
-        user = db.users.find_one_and_update(
-            {'_id': ObjectId(user_id)},
-            {
-                '$set': {
-                    'isVerified': True,
-                    'verifiedAt': datetime.utcnow()
-                }
-            },
-            return_document=True
-        )
-        
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-            
-        return jsonify({'message': 'User verified successfully'})
-    except Exception as e:
-        print(f"Error verifying user: {str(e)}")
-        return jsonify({'error': 'Failed to verify user'}), 500
-
 # Auth routes
 @app.route('/api/auth/register', methods=['POST'])
 def register():
@@ -860,6 +949,23 @@ def verify():
         print(f"Verify error: {str(e)}")
         print("Traceback:", traceback.format_exc())
         return jsonify({'error': 'Verification failed'}), 500
+
+@app.route('/api/auth/logout', methods=['OPTIONS'])
+def logout_options():
+    response = app.make_default_options_response()
+    return response
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    try:
+        print("\n=== Logout Request ===")
+        print(f"Session before logout: {dict(session)}")
+        session.clear()
+        print(f"Session after logout: {dict(session)}")
+        return jsonify({'message': 'Logged out successfully'})
+    except Exception as e:
+        print(f"Logout error: {str(e)}")
+        return jsonify({'error': 'Logout failed'}), 500
 
 # User routes
 @app.route('/api/users/profile', methods=['PUT'])

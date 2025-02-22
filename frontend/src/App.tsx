@@ -8,12 +8,14 @@ import SignUpPage from "./pages/SignUpPage";
 import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ReferralPage from "./pages/ReferralPage";
+import Support from "./pages/Support";
 import AuthForm from "./components/auth/AuthForm";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import ForexGrid from "./components/dashboard/forex/ForexGrid";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import AdminDashboard from "./pages/AdminDashboard";
+import TemporaryPasswordChange from "./components/auth/TemporaryPasswordChange";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +87,7 @@ const App = () => {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/signup" element={<SignUpPage />} />
                 <Route path="/login" element={<AuthForm />} />
+                <Route path="/change-temporary-password" element={<TemporaryPasswordChange />} />
                 <Route
                   path="/dashboard"
                   element={
@@ -121,6 +124,16 @@ const App = () => {
                     <ProtectedRoute>
                       <AppLayout>
                         <ForexGrid />
+                      </AppLayout>
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/support"
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout>
+                        <Support />
                       </AppLayout>
                     </ProtectedRoute>
                   }

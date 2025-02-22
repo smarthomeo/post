@@ -9,6 +9,7 @@ export interface User {
   referralCode: string;
   isAdmin: boolean;
   isActive: boolean;
+  isTemporaryPassword?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +50,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             referralCode: response.user.referralCode,
             isAdmin: response.user.isAdmin || false,
             isActive: response.user.isActive || false,
+            isTemporaryPassword: response.user.isTemporaryPassword || false,
             createdAt: response.user.createdAt,
             updatedAt: response.user.updatedAt
           };
@@ -79,11 +81,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         referralCode: response.user.referralCode,
         isAdmin: response.user.isAdmin || false,
         isActive: response.user.isActive || false,
+        isTemporaryPassword: response.user.isTemporaryPassword || false,
         createdAt: response.user.createdAt,
         updatedAt: response.user.updatedAt
       };
       setUser(userData);
       localStorage.setItem('user', JSON.stringify(userData));
+
+      // Redirect to password change if using temporary password
+      if (userData.isTemporaryPassword) {
+        window.location.href = '/change-temporary-password';
+      }
     }
   };
 
