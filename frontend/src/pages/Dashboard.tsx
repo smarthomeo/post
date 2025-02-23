@@ -137,48 +137,48 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-background">
-      <div className="container mx-auto px-2 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8 max-w-[1400px]">
-        <div className="space-y-4 sm:space-y-6">
+      <div className="container mx-auto px-1 xs:px-2 sm:px-4 lg:px-6 py-2 xs:py-4 sm:py-6 lg:py-8 max-w-[1400px]">
+        <div className="space-y-2 xs:space-y-4 sm:space-y-6">
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 w-full">
+          <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 w-full">
             {/* Balance Card */}
-            <Card className="w-full p-3 sm:p-4 lg:p-6">
+            <Card className="w-full p-2 xs:p-3 sm:p-4 lg:p-6">
               <div className="flex flex-col">
-                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Balance</p>
-                <p className="text-base sm:text-lg lg:text-2xl font-bold text-primary mt-1 truncate">
+                <p className="text-2xs xs:text-xs sm:text-sm font-medium text-muted-foreground">Balance</p>
+                <p className="text-sm xs:text-base sm:text-lg lg:text-2xl font-bold text-primary mt-1 truncate">
                   KES {userData?.balance?.toLocaleString() || "0"}
                 </p>
               </div>
             </Card>
 
             {/* Total Invested Card */}
-            <Card className="w-full p-3 sm:p-4 lg:p-6">
+            <Card className="w-full p-2 xs:p-3 sm:p-4 lg:p-6">
               <div className="flex flex-col">
-                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Invested</p>
-                <p className="text-base sm:text-lg lg:text-2xl font-bold text-blue-600 mt-1 truncate">
+                <p className="text-2xs xs:text-xs sm:text-sm font-medium text-muted-foreground">Total Invested</p>
+                <p className="text-sm xs:text-base sm:text-lg lg:text-2xl font-bold text-blue-600 mt-1 truncate">
                   KES {Number(totalInvested).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
             </Card>
 
             {/* Withdrawable Card */}
-            <Card className="w-full p-3 sm:p-4 lg:p-6">
+            <Card className="w-full p-2 xs:p-3 sm:p-4 lg:p-6">
               <div className="flex flex-col">
-                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Earnings</p>
-                <p className="text-base sm:text-lg lg:text-2xl font-bold text-purple-600 mt-1 truncate">
+                <p className="text-2xs xs:text-xs sm:text-sm font-medium text-muted-foreground">Earnings</p>
+                <p className="text-sm xs:text-base sm:text-lg lg:text-2xl font-bold text-purple-600 mt-1 truncate">
                   KES {Number(userData?.withdrawable || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-2xs xs:text-xs text-muted-foreground mt-1">
                   ROI + Referrals
                 </p>
               </div>
             </Card>
 
             {/* Referral Earnings Card */}
-            <Card className="w-full p-3 sm:p-4 lg:p-6">
+            <Card className="w-full p-2 xs:p-3 sm:p-4 lg:p-6">
               <div className="flex flex-col">
-                <p className="text-xs sm:text-sm font-medium text-muted-foreground">Referral Earnings</p>
-                <p className="text-base sm:text-lg lg:text-2xl font-bold text-orange-600 mt-1 truncate">
+                <p className="text-2xs xs:text-xs sm:text-sm font-medium text-muted-foreground">Referral Earnings</p>
+                <p className="text-sm xs:text-base sm:text-lg lg:text-2xl font-bold text-orange-600 mt-1 truncate">
                   KES {Number(referralEarnings).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
               </div>
@@ -188,16 +188,16 @@ export default function Dashboard() {
           {/* Action Buttons */}
           <div className="grid grid-cols-2 gap-2 sm:gap-4 w-full">
             <Button 
-              size="lg"
-              className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold"
+              size="default"
+              className="w-full h-9 xs:h-12 sm:h-14 text-sm xs:text-base sm:text-lg font-semibold"
               onClick={() => setShowDepositModal(true)}
             >
               Deposit
             </Button>
             <Button 
-              size="lg"
+              size="default"
               variant="outline"
-              className="w-full h-12 sm:h-14 text-base sm:text-lg font-semibold"
+              className="w-full h-9 xs:h-12 sm:h-14 text-sm xs:text-base sm:text-lg font-semibold"
               onClick={() => setShowWithdrawModal(true)}
             >
               Withdraw
@@ -205,7 +205,7 @@ export default function Dashboard() {
           </div>
 
           {/* Portfolio Chart */}
-          <Card className="w-full p-2 sm:p-4 lg:p-6">
+          <Card className="w-full p-1 xs:p-2 sm:p-4 lg:p-6">
             <div className="w-full max-w-full overflow-hidden">
               <PortfolioChart 
                 investments={investments} 
@@ -217,8 +217,8 @@ export default function Dashboard() {
           </Card>
 
           {/* Portfolio Table */}
-          <Card className="w-full p-2 sm:p-4 lg:p-6">
-            <h2 className="text-base sm:text-lg lg:text-xl font-medium mb-4">Your Portfolio</h2>
+          <Card className="w-full p-1 xs:p-2 sm:p-4 lg:p-6">
+            <h2 className="text-sm xs:text-base sm:text-lg lg:text-xl font-medium mb-2 xs:mb-4">Your Portfolio</h2>
             <div className="w-full max-w-full overflow-x-auto">
               <div className="min-w-full align-middle inline-block">
                 <PortfolioTable investments={investments} isLoading={isLoading} />
@@ -227,8 +227,8 @@ export default function Dashboard() {
           </Card>
 
           {/* Transaction History */}
-          <Card className="w-full p-2 sm:p-4 lg:p-6">
-            <h2 className="text-base sm:text-lg lg:text-xl font-medium mb-4">Recent Transactions</h2>
+          <Card className="w-full p-1 xs:p-2 sm:p-4 lg:p-6">
+            <h2 className="text-sm xs:text-base sm:text-lg lg:text-xl font-medium mb-2 xs:mb-4">Recent Transactions</h2>
             <div className="w-full max-w-full overflow-x-auto">
               <div className="min-w-full align-middle inline-block">
                 <TransactionTable transactions={transactions} />

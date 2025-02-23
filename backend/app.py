@@ -181,7 +181,7 @@ def get_password_reset_history_options():
 @admin_required
 def approve_transaction(transaction_id):
     try:
-        print(f"Approving transaction: {transaction_id}")
+        print(f"\n=== Approving transaction: {transaction_id} ===")
         
         # Find the transaction
         transaction = mongo_client.pos.transactions.find_one({
@@ -195,15 +195,26 @@ def approve_transaction(transaction_id):
         print(f"Found transaction: {transaction}")
 
         # Get user ID (handle both field names)
-        user_id = transaction.get('userId') or transaction.get('user_id')
+        user_id = None
+        if 'user_id' in transaction:
+            user_id = transaction['user_id']
+        elif 'userId' in transaction:
+            user_id = transaction['userId']
+            
         if not user_id:
             print("No user ID found in transaction")
             return jsonify({'message': 'Invalid transaction: no user ID'}), 400
 
+        print(f"Processing transaction for user: {user_id}")
+
         # For withdrawals, verify sufficient withdrawable amount
         if transaction['type'] == 'withdrawal' and transaction.get('withdrawalType') == 'earnings':
-            withdrawable = calculate_withdrawable_amount(user_id)
-            if float(transaction['amount']) > withdrawable:
+            withdrawable = calculate_withdrawable_amount(str(user_id), transaction_id)
+            amount = float(transaction['amount'])
+            print(f"Withdrawal check - Amount: {amount}, Withdrawable: {withdrawable}")
+            
+            if amount > withdrawable:
+                print(f"Insufficient withdrawable amount. Required: {amount}, Available: {withdrawable}")
                 return jsonify({'message': 'Insufficient withdrawable amount'}), 400
 
         # Update transaction status
@@ -218,10 +229,20 @@ def approve_transaction(transaction_id):
 
         # Handle deposits and withdrawals differently
         if transaction['type'] == 'deposit':
-            # For deposits, update user's balance
+            # For deposits, increase user's balance
             balance_result = mongo_client.pos.users.update_one(
                 {'_id': user_id},
                 {'$inc': {'balance': float(transaction['amount'])}}
+            )
+            
+            if balance_result.modified_count == 0:
+                print("User balance update failed")
+                return jsonify({'message': 'Failed to update user balance'}), 500
+        elif transaction['type'] == 'withdrawal':
+            # For withdrawals, decrease user's balance
+            balance_result = mongo_client.pos.users.update_one(
+                {'_id': user_id},
+                {'$inc': {'balance': -float(transaction['amount'])}}
             )
             
             if balance_result.modified_count == 0:
@@ -233,6 +254,8 @@ def approve_transaction(transaction_id):
 
     except Exception as e:
         print(f"Error in approve_transaction: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'message': 'Failed to approve transaction'}), 500
 
 @app.route('/api/admin/transactions/<transaction_id>/reject', methods=['POST'])
@@ -1250,7 +1273,7 @@ def login():
         print("Traceback:", traceback.format_exc())
         return jsonify({'error': 'Login failed'}), 500
 
-def calculate_withdrawable_amount(user_id):
+def calculate_withdrawable_amount(user_id, exclude_transaction_id=None):
     """Calculate total withdrawable amount (ROI + referral earnings) for a user"""
     try:
         # Get all active investments and their profits
@@ -1271,15 +1294,22 @@ def calculate_withdrawable_amount(user_id):
         
         total_referrals = next(referral_rewards, {'total': 0})['total']
         
+        # Build withdrawal query
+        withdrawal_query = {
+            'user_id': ObjectId(user_id),
+            'type': 'withdrawal',
+            'withdrawalType': 'earnings',
+            'status': {'$in': ['approved', 'pending']}
+        }
+        
+        # Exclude specific transaction if provided
+        if exclude_transaction_id:
+            withdrawal_query['_id'] = {'$ne': ObjectId(exclude_transaction_id)}
+        
         # Get total approved and pending withdrawals
         withdrawals = db.transactions.aggregate([
             {
-                '$match': {
-                    'user_id': ObjectId(user_id),
-                    'type': 'withdrawal',
-                    'withdrawalType': 'earnings',
-                    'status': {'$in': ['approved', 'pending']}
-                }
+                '$match': withdrawal_query
             },
             {
                 '$group': {
@@ -1391,9 +1421,12 @@ def update_profile():
 @login_required
 def get_transactions():
     try:
-        # Get all transactions for the user
+        # Get all transactions for the user, handling both field names
         transactions = list(db.transactions.find({
-            'user_id': ObjectId(session['user_id'])
+            '$or': [
+                {'user_id': ObjectId(session['user_id'])},
+                {'userId': ObjectId(session['user_id'])}
+            ]
         }).sort('createdAt', -1))  # Sort by newest first
         
         # Format transactions for response
@@ -1401,10 +1434,11 @@ def get_transactions():
         for transaction in transactions:
             formatted_transaction = {
                 '_id': str(transaction['_id']),
-                'user_id': str(transaction['user_id']),
+                'user_id': str(transaction.get('user_id', transaction.get('userId'))),
                 'type': transaction['type'],
                 'amount': float(transaction['amount']),
                 'status': transaction['status'],
+                'withdrawalType': transaction.get('withdrawalType'),  # Include withdrawalType if present
                 'createdAt': transaction['createdAt'].isoformat() if isinstance(transaction.get('createdAt'), datetime) else str(transaction.get('createdAt', '')),
                 'updatedAt': transaction.get('updatedAt', '').isoformat() if isinstance(transaction.get('updatedAt'), datetime) else str(transaction.get('updatedAt', ''))
             }
@@ -1475,13 +1509,13 @@ def initiate_withdrawal():
             
         current_time = datetime.utcnow()
         transaction = {
-            'user_id': ObjectId(user_id),
+            'user_id': ObjectId(user_id),  # Use consistent field name
             'type': 'withdrawal',
             'amount': amount,
             'status': 'pending',
             'createdAt': current_time,
             'updatedAt': current_time,
-            'withdrawalType': 'earnings'  # New field to indicate this is from earnings
+            'withdrawalType': 'earnings'  # Indicate this is from earnings
         }
         
         result = db.transactions.insert_one(transaction)
@@ -1501,6 +1535,8 @@ def initiate_withdrawal():
         return jsonify({'transaction': transaction_response})
     except Exception as e:
         print(f"Withdrawal error: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': 'Failed to create withdrawal'}), 500
 
 @app.route('/api/transactions/deposit/<transaction_id>/confirm', methods=['POST'])

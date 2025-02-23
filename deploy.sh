@@ -25,6 +25,6 @@ ssh -t $REMOTE_USER@$REMOTE_HOST "cd $REMOTE_DIR && \
     tar xzf deploy.tar.gz && \
     rm deploy.tar.gz && \
     docker-compose -f $DOCKER_COMPOSE_FILE down || true && \
-    docker-compose -f $DOCKER_COMPOSE_FILE up --build -d"
+    docker-compose -f $DOCKER_COMPOSE_FILE up --build -d  --remove-orphans"
 
 echo "Deployment completed!"

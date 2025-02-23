@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
@@ -24,7 +24,7 @@ const validationSchema = Yup.object().shape({
     .min(3, "Username must be at least 3 characters"),
   phone: Yup.string()
     .required("Phone number is required")
-    .matches(/^\+[1-9]\d{1,14}$/, "Please enter a valid phone number"),
+    .matches(/^\+[1-9]\d{1,14}$/, "Please enter a valid phone number with country code"),
   password: Yup.string()
     .required("Password is required")
     .min(6, "Password must be at least 6 characters"),
@@ -42,6 +42,7 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { login } = useContext(AuthContext) || {};
+  const [error, setError] = useState<string | null>(null);
 
   if (!login) {
     throw new Error("RegisterForm must be used within an AuthProvider");
@@ -57,6 +58,7 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
 
   const handleSubmit = async (values: FormValues) => {
     try {
+      setError(null);
       // Register the user
       const response = await authApi.register({
         username: values.username,
@@ -76,10 +78,11 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
       navigate("/dashboard");
     } catch (error: any) {
       console.error('Registration error:', error);
+      setError(error.message);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to register",
+        title: "Registration Failed",
+        description: error.message,
       });
     }
   };
@@ -94,12 +97,19 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
           Fill in your details to get started
         </p>
       </div>
+
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-200">
+          <p className="text-sm text-red-600 font-medium">{error}</p>
+        </div>
+      )}
+
       <Formik
         initialValues={initialValues}
         validationSchema={validationSchema}
         onSubmit={handleSubmit}
       >
-        {({ errors, touched, values, setFieldValue, handleBlur }) => (
+        {({ errors, touched, values, setFieldValue, handleBlur, isSubmitting }) => (
           <Form className="space-y-4 sm:space-y-6">
             <div className="space-y-4">
               <div>
@@ -113,7 +123,10 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
                     type="text"
                     autoComplete="username"
                     value={values.username}
-                    onChange={(e) => setFieldValue("username", e.target.value)}
+                    onChange={(e) => {
+                      setError(null);
+                      setFieldValue("username", e.target.value);
+                    }}
                     onBlur={handleBlur}
                     className="block w-full h-9 sm:h-10 text-sm sm:text-base"
                   />
@@ -134,7 +147,10 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
                     international
                     defaultCountry="KE"
                     value={values.phone}
-                    onChange={(value) => setFieldValue("phone", value)}
+                    onChange={(value) => {
+                      setError(null);
+                      setFieldValue("phone", value);
+                    }}
                     onBlur={handleBlur}
                     className="block w-full text-sm sm:text-base"
                   />
@@ -155,7 +171,10 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
                     type="password"
                     autoComplete="new-password"
                     value={values.password}
-                    onChange={(e) => setFieldValue("password", e.target.value)}
+                    onChange={(e) => {
+                      setError(null);
+                      setFieldValue("password", e.target.value);
+                    }}
                     onBlur={handleBlur}
                     className="block w-full h-9 sm:h-10 text-sm sm:text-base"
                   />
@@ -176,7 +195,10 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
                     type="password"
                     autoComplete="new-password"
                     value={values.confirmPassword}
-                    onChange={(e) => setFieldValue("confirmPassword", e.target.value)}
+                    onChange={(e) => {
+                      setError(null);
+                      setFieldValue("confirmPassword", e.target.value);
+                    }}
                     onBlur={handleBlur}
                     className="block w-full h-9 sm:h-10 text-sm sm:text-base"
                   />
@@ -196,7 +218,10 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
                     name="referralCode"
                     type="text"
                     value={values.referralCode}
-                    onChange={(e) => setFieldValue("referralCode", e.target.value)}
+                    onChange={(e) => {
+                      setError(null);
+                      setFieldValue("referralCode", e.target.value);
+                    }}
                     onBlur={handleBlur}
                     className="block w-full h-9 sm:h-10 text-sm sm:text-base"
                   />
@@ -211,8 +236,9 @@ const RegisterForm = ({ defaultReferralCode }: RegisterFormProps) => {
               <Button
                 type="submit"
                 className="w-full h-9 sm:h-10 text-sm sm:text-base"
+                disabled={isSubmitting}
               >
-                Create Account
+                {isSubmitting ? "Creating Account..." : "Create Account"}
               </Button>
             </div>
           </Form>

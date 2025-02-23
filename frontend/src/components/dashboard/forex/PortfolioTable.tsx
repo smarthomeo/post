@@ -52,7 +52,7 @@ export default function PortfolioTable({
       };
 
       // Use a more compact format for mobile
-      if (window.innerWidth < 640) {
+      if (window.innerWidth < 760) {
         options.year = '2-digit';
         delete options.hour;
         delete options.minute;

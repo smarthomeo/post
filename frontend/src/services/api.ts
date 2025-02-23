@@ -32,8 +32,9 @@ async function fetchApi(endpoint: string, options: ApiOptions = {}) {
     }
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Network error' }));
-      throw new Error(error.error || 'API request failed');
+      const error = await response.json();
+      // Use the error message from the backend if available, otherwise use a default message
+      throw new Error(error.error || error.message || getDefaultErrorMessage(response.status));
     }
 
     const data = await response.json();
@@ -59,6 +60,28 @@ async function fetchApi(endpoint: string, options: ApiOptions = {}) {
   } catch (error) {
     console.error('API request error:', error);
     throw error;
+  }
+}
+
+// Helper function to get default error messages based on status code
+function getDefaultErrorMessage(status: number): string {
+  switch (status) {
+    case 400:
+      return 'Invalid request. Please check your input.';
+    case 401:
+      return 'Invalid credentials. Please check your phone number and password.';
+    case 403:
+      return 'Access denied. You do not have permission to perform this action.';
+    case 404:
+      return 'Resource not found.';
+    case 409:
+      return 'This resource already exists.';
+    case 422:
+      return 'Validation error. Please check your input.';
+    case 500:
+      return 'Server error. Please try again later.';
+    default:
+      return 'An unexpected error occurred. Please try again.';
   }
 }
 

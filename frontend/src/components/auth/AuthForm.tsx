@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
@@ -17,7 +17,7 @@ interface FormValues {
 const validationSchema = Yup.object().shape({
   phone: Yup.string()
     .required("Phone number is required")
-    .matches(/^\+[1-9]\d{1,14}$/, "Please enter a valid phone number"),
+    .matches(/^\+[1-9]\d{1,14}$/, "Please enter a valid phone number with country code"),
   password: Yup.string()
     .required("Password is required")
     .min(6, "Password must be at least 6 characters"),
@@ -27,6 +27,7 @@ const AuthForm = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { login } = useContext(AuthContext) || {};
+  const [error, setError] = useState<string | null>(null);
 
   if (!login) {
     throw new Error("AuthForm must be used within an AuthProvider");
@@ -39,6 +40,7 @@ const AuthForm = () => {
 
   const handleSubmit = async (values: FormValues) => {
     try {
+      setError(null);
       await login(values.phone, values.password);
       
       toast({
@@ -49,10 +51,11 @@ const AuthForm = () => {
       navigate("/dashboard");
     } catch (error: any) {
       console.error('Auth error:', error);
+      setError(error.message);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to login",
+        title: "Login Failed",
+        description: error.message,
       });
     }
   };
@@ -79,12 +82,17 @@ const AuthForm = () => {
         </div>
 
         <div className="backdrop-blur-sm bg-white/80 rounded-2xl shadow-2xl p-6 sm:p-8">
+          {error && (
+            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
+              <p className="text-sm text-red-600 font-medium">{error}</p>
+            </div>
+          )}
           <Formik
             initialValues={initialValues}
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            {({ errors, touched, values, setFieldValue, handleBlur }) => (
+            {({ errors, touched, values, setFieldValue, handleBlur, isSubmitting }) => (
               <Form className="space-y-6">
                 <div className="space-y-5">
                   <div className="space-y-2">
@@ -98,7 +106,10 @@ const AuthForm = () => {
                         international
                         defaultCountry="KE"
                         value={values.phone}
-                        onChange={(value) => setFieldValue("phone", value)}
+                        onChange={(value) => {
+                          setError(null);
+                          setFieldValue("phone", value);
+                        }}
                         onBlur={handleBlur}
                         className="block w-full px-4 py-3 bg-white/50 border border-primary/20 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/40 focus:outline-none transition-all duration-200 text-primary placeholder-primary/50"
                       />
@@ -120,7 +131,10 @@ const AuthForm = () => {
                         type="password"
                         autoComplete="current-password"
                         value={values.password}
-                        onChange={(e) => setFieldValue("password", e.target.value)}
+                        onChange={(e) => {
+                          setError(null);
+                          setFieldValue("password", e.target.value);
+                        }}
                         onBlur={handleBlur}
                         className="w-full px-4 py-3 bg-white/50 border border-primary/20 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary/40 focus:outline-none transition-all duration-200 text-primary placeholder-primary/50"
                       />
@@ -146,8 +160,9 @@ const AuthForm = () => {
                   <Button 
                     type="submit" 
                     className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 rounded-lg transform hover:scale-[1.02] transition-all duration-200 shadow-lg hover:shadow-xl"
+                    disabled={isSubmitting}
                   >
-                    Sign In
+                    {isSubmitting ? "Signing in..." : "Sign In"}
                   </Button>
                   
                   <div className="text-center">
