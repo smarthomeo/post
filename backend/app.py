@@ -955,8 +955,7 @@ def calculate_daily_referral_commissions():
                         {'_id': level1_referrer_id},
                         {
                             '$inc': {
-                                'referralEarnings': level1_commission,
-                                'balance': level1_commission
+                                'referralEarnings': level1_commission
                             }
                         }
                     )
@@ -989,8 +988,7 @@ def calculate_daily_referral_commissions():
                                 {'_id': level2_referrer_id},
                                 {
                                     '$inc': {
-                                        'referralEarnings': level2_commission,
-                                        'balance': level2_commission
+                                        'referralEarnings': level2_commission
                                     }
                                 }
                             )
@@ -1023,8 +1021,7 @@ def calculate_daily_referral_commissions():
                                         {'_id': level3_referrer_id},
                                         {
                                             '$inc': {
-                                                'referralEarnings': level3_commission,
-                                                'balance': level3_commission
+                                                'referralEarnings': level3_commission
                                             }
                                         }
                                     )
@@ -1067,9 +1064,45 @@ def calculate_daily_roi_earnings():
         
         total_roi = 0
         processed_count = 0
+        expired_count = 0
         
         for investment in active_investments:
             try:
+                # Check if investment is expired (3 months old)
+                created_at = investment.get('createdAt')
+                if not isinstance(created_at, datetime):
+                    created_at = datetime.fromisoformat(str(created_at).replace('Z', '+00:00'))
+                
+                age_days = (current_time - created_at).days
+                if age_days >= 90:  # 3 months (90 days)
+                    print(f"\nInvestment {investment['_id']} has expired (age: {age_days} days)")
+                    
+                    # Update investment status to expired
+                    db.investments.update_one(
+                        {'_id': investment['_id']},
+                        {
+                            '$set': {
+                                'status': 'expired',
+                                'lastProfitUpdate': current_time,
+                                'expiryDate': current_time
+                            }
+                        }
+                    )
+                    
+                    # Record the expiry in history
+                    db.investment_history.insert_one({
+                        'investmentId': investment['_id'],
+                        'userId': investment['userId'],
+                        'type': 'investment_expired',
+                        'amount': float(investment.get('amount', 0)),
+                        'date': current_time.date().isoformat(),
+                        'createdAt': current_time,
+                        'balance': float(investment.get('profit', 0))
+                    })
+                    
+                    expired_count += 1
+                    continue
+                
                 # Get investment details
                 user_id = investment['userId']
                 amount = float(investment.get('amount', 0))
@@ -1096,12 +1129,6 @@ def calculate_daily_roi_earnings():
                     }
                 )
                 
-                # Add to user's balance
-                db.users.update_one(
-                    {'_id': user_id},
-                    {'$inc': {'balance': daily_earnings}}
-                )
-                
                 # Record the earnings in history
                 db.investment_history.insert_one({
                     'investmentId': investment['_id'],
@@ -1113,7 +1140,7 @@ def calculate_daily_roi_earnings():
                     'balance': new_profit
                 })
                 
-                print(f"Credited {daily_earnings} to user {user_id}, new investment profit: {new_profit}")
+                print(f"Added {daily_earnings} to investment {investment['_id']}, new profit: {new_profit}")
                 
             except Exception as inv_error:
                 print(f"Error processing investment {investment.get('_id')}: {str(inv_error)}")
@@ -1121,6 +1148,7 @@ def calculate_daily_roi_earnings():
         
         print("\n=== ROI Calculation Summary ===")
         print(f"Processed {processed_count} investments")
+        print(f"Expired {expired_count} investments")
         print(f"Total ROI distributed: {total_roi}")
         print("=== Daily ROI Calculation Completed ===\n")
         return True
@@ -1276,10 +1304,10 @@ def login():
 def calculate_withdrawable_amount(user_id, exclude_transaction_id=None):
     """Calculate total withdrawable amount (ROI + referral earnings) for a user"""
     try:
-        # Get all active investments and their profits
+        # Get only active investments and their profits
         investments = list(db.investments.find({
             'userId': ObjectId(user_id),
-            'status': 'active'
+            'status': 'active'  # Only consider active investments
         }))
         total_roi = sum(float(inv.get('profit', 0)) for inv in investments)
         
@@ -1664,6 +1692,37 @@ def create_investment():
 
         forex_pair = data['pair']
 
+        # Define maximum amounts per forex pair
+        MAX_AMOUNTS = {
+            'EUR/AUD': 50000,
+            'USD/CAD': 50000,
+            'NZD/USD': 200000,
+            'EUR/USD': 20000,
+            'GBP/USD': 20000,
+            'USD/JPY': 20000,
+            'USD/CHF': 20000,
+            'AUD/USD': 20000,
+            'EUR/GBP': 20000,
+        }
+
+        # Validate maximum amount for the forex pair
+        max_amount = MAX_AMOUNTS.get(forex_pair)
+        if max_amount is None:
+            return jsonify({'error': 'Invalid forex pair'}), 400
+        
+        if amount > max_amount:
+            return jsonify({'error': f'Maximum investment amount for {forex_pair} is {max_amount:,} KES'}), 400
+
+        # Check number of existing investments for this pair
+        existing_investments = db.investments.count_documents({
+            'userId': ObjectId(user_id),
+            'forexPair': forex_pair,
+            'status': 'active'
+        })
+
+        if existing_investments >= 2:
+            return jsonify({'error': f'Maximum of 2 active investments allowed per forex pair. You already have {existing_investments} active investments in {forex_pair}'}), 400
+
         # Create the investment
         current_time = datetime.utcnow()
         investment = {
@@ -1703,10 +1762,10 @@ def create_investment():
                 })
                 
                 if not existing_one_time_reward and one_time_reward > 0:
-                    # Credit one-time reward to direct referrer
+                    # Credit one-time reward to direct referrer's referral earnings
                     db.users.update_one(
                         {'_id': referrer['_id']},
-                        {'$inc': {'balance': one_time_reward}}
+                        {'$inc': {'referralEarnings': one_time_reward}}
                     )
                     
                     # Record the reward in referral history
@@ -1718,9 +1777,6 @@ def create_investment():
                         'amount': one_time_reward,
                         'createdAt': current_time
                     })
-
-                # Daily commission calculation will be handled by a separate cron job
-                # that calculates earnings based on the daily ROI of referred users' investments
 
         # Get updated user balance
         updated_user = db.users.find_one({'_id': ObjectId(user_id)})

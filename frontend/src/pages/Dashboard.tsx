@@ -165,7 +165,7 @@ export default function Dashboard() {
             <Card className="w-full p-2 xs:p-3 sm:p-4 lg:p-6">
               <div className="flex flex-col">
                 <p className="text-2xs xs:text-xs sm:text-sm font-medium text-muted-foreground">Earnings</p>
-                <p className="text-sm xs:text-base sm:text-lg lg:text-2xl font-bold text-purple-600 mt-1 truncate">
+                <p className="text-sm xs:text-base sm:text-lg lg:text-2xl font-bold text-green-600 mt-1 truncate">
                   KES {Number(userData?.withdrawable || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-2xs xs:text-xs text-muted-foreground mt-1">

@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import ReferralPage from "./pages/ReferralPage";
 import Support from "./pages/Support";
+import Terms from "./pages/Terms";
 import AuthForm from "./components/auth/AuthForm";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import ForexGrid from "./components/dashboard/forex/ForexGrid";
@@ -87,6 +88,7 @@ const App = () => {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/signup" element={<SignUpPage />} />
                 <Route path="/login" element={<AuthForm />} />
+                <Route path="/terms" element={<Terms />} />
                 <Route path="/change-temporary-password" element={<TemporaryPasswordChange />} />
                 <Route
                   path="/dashboard"

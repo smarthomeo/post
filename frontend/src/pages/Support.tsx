@@ -125,12 +125,16 @@ export default function Support() {
               <FileText className="h-5 w-5" />
               Documentation
             </CardTitle>
-            <CardDescription>Learn more about our platform</CardDescription>
+            <CardDescription>Important documents</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            <Button variant="link" className="h-auto p-0">Platform Guide</Button>
-            <Button variant="link" className="h-auto p-0">Investment Terms</Button>
-            <Button variant="link" className="h-auto p-0">API Documentation</Button>
+            <Button 
+              variant="link" 
+              className="h-auto p-0"
+              onClick={() => window.open('/terms', '_blank')}
+            >
+              Terms and Conditions
+            </Button>
           </CardContent>
         </Card>
       </div>

@@ -20,7 +20,7 @@ interface WithdrawModalProps {
 }
 
 const MIN_WITHDRAWAL = 200;
-const TELEGRAM_GROUP_LINK = "https://t.me/estrellabluesky"; // Replace with your actual Telegram group link
+//const TELEGRAM_GROUP_LINK = "https://t.me/estrellabluesky"; // Replace with your actual Telegram group link
 
 export function WithdrawModal({ 
   isOpen, 

@@ -47,8 +47,8 @@ def start_scheduler():
         scheduler.add_job(
             run_daily_commission,
             trigger=CronTrigger(
-                hour=0,
-                minute=0,
+                hour=9,
+                minute=47,
                 day_of_week='mon-fri',
                 timezone=pytz.timezone('Africa/Nairobi')
             ),
@@ -61,8 +61,8 @@ def start_scheduler():
         scheduler.add_job(
             run_daily_roi,
             trigger=CronTrigger(
-                hour=0,
-                minute=0,
+                hour=9,
+                minute=47,
                 day_of_week='mon-fri',
                 timezone=pytz.timezone('Africa/Nairobi')
             ),
