@@ -2099,6 +2099,16 @@ def change_password():
         print(f"Error in change_password: {str(e)}")
         return jsonify({'error': 'Failed to change password'}), 500
 
+# Health check endpoint for Render
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    try:
+        # Check MongoDB connection
+        db.command('ping')
+        return jsonify({'status': 'healthy', 'message': 'Service is running'}), 200
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'message': str(e)}), 500
+
 if __name__ == '__main__':
     from scheduler import start_scheduler
     scheduler = start_scheduler()
