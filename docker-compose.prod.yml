@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
     ports:
       - "5000:5000"
     environment:
-      - FRONTEND_URL=http://159.223.105.44
-      - MONGODB_URI=mongodb+srv://keninleynon:webber1367@cluster0.ij5xj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - FRONTEND_URL=https://blueskyafrika.cc
+      - MONGODB_URI=mongodb://mongodb:27017/pos
       - FLASK_ENV=production
       - FLASK_DEBUG=0
     restart: always
@@ -19,9 +17,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_BACKEND_URL: http://159.223.105.44:5000
+        VITE_BACKEND_URL: https://blueskyafrika.cc
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - ./ssl:/etc/nginx/ssl
     restart: always
     depends_on:
       - backend

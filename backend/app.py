@@ -58,7 +58,7 @@ app.secret_key = os.environ.get('JWT_SECRET', 'secure-auth-glass-secret-key-2025
 
 # Override domain in production
 if os.getenv('FLASK_ENV') == 'production':
-    app.config['SESSION_COOKIE_DOMAIN'] = '159.223.105.44'
+    app.config['SESSION_COOKIE_DOMAIN'] = 'blueskyafrika.cc'
 
 Session(app)
 
@@ -217,6 +217,11 @@ def approve_transaction(transaction_id):
                 print(f"Insufficient withdrawable amount. Required: {amount}, Available: {withdrawable}")
                 return jsonify({'message': 'Insufficient withdrawable amount'}), 400
 
+            # We don't need to deduct from profits/earnings here because:
+            # 1. The transaction is already in 'pending' status
+            # 2. calculate_withdrawable_amount already accounts for pending withdrawals
+            # 3. This was causing a double deduction
+
         # Update transaction status
         update_result = mongo_client.pos.transactions.update_one(
             {'_id': ObjectId(transaction_id)},
@@ -238,16 +243,6 @@ def approve_transaction(transaction_id):
             if balance_result.modified_count == 0:
                 print("User balance update failed")
                 return jsonify({'message': 'Failed to update user balance'}), 500
-        elif transaction['type'] == 'withdrawal':
-            # For withdrawals, decrease user's balance
-            balance_result = mongo_client.pos.users.update_one(
-                {'_id': user_id},
-                {'$inc': {'balance': -float(transaction['amount'])}}
-            )
-            
-            if balance_result.modified_count == 0:
-                print("User balance update failed")
-                return jsonify({'message': 'Failed to update user balance'}), 500
 
         print("Transaction approved successfully")
         return jsonify({'message': 'Transaction approved successfully'}), 200
@@ -262,6 +257,14 @@ def approve_transaction(transaction_id):
 @admin_required
 def reject_transaction(transaction_id):
     try:
+        # Find the transaction first to get details
+        transaction = mongo_client.pos.transactions.find_one({
+            '_id': ObjectId(transaction_id)
+        })
+        
+        if not transaction:
+            return jsonify({'message': 'Transaction not found'}), 404
+            
         # Update transaction status
         result = mongo_client.pos.transactions.update_one(
             {'_id': ObjectId(transaction_id)},
@@ -269,8 +272,12 @@ def reject_transaction(transaction_id):
         )
 
         if result.modified_count == 0:
-            return jsonify({'message': 'Transaction not found'}), 404
-
+            return jsonify({'message': 'Failed to update transaction'}), 500
+            
+        # For withdrawals, no additional action is needed
+        # The calculate_withdrawable_amount function already excludes rejected withdrawals,
+        # so the funds will automatically become available again
+        
         return jsonify({'message': 'Transaction rejected successfully'}), 200
 
     except Exception as e:
@@ -445,14 +452,33 @@ def get_admin_stats():
         pending_verifications = mongo_client.pos.users.count_documents({'isVerified': False})
         print(f"Pending verifications: {pending_verifications}")
         
-        # Get active users (users with balance > 0 or active investments)
-        active_users = mongo_client.pos.users.count_documents({
-            '$or': [
-                {'balance': {'$gt': 0}},
-                {'investments': {'$exists': True, '$ne': []}}
-            ]
-        })
-        print(f"Active users: {active_users}")
+        # Get active users (users with active investments)
+        active_users_pipeline = [
+            {
+                '$lookup': {
+                    'from': 'investments',
+                    'localField': '_id',
+                    'foreignField': 'userId',
+                    'as': 'investments'
+                }
+            },
+            {
+                '$match': {
+                    'investments': {
+                        '$elemMatch': {
+                            'status': 'active'
+                        }
+                    }
+                }
+            },
+            {
+                '$count': 'activeUsers'
+            }
+        ]
+        
+        active_users_result = list(mongo_client.pos.users.aggregate(active_users_pipeline))
+        active_users = active_users_result[0]['activeUsers'] if active_users_result else 0
+        print(f"Active users (with active investments): {active_users}")
         
         stats = {
             'totalUsers': total_users,
@@ -542,6 +568,11 @@ def get_all_users():
         
         # Execute the aggregation pipeline
         users = list(mongo_client.pos.users.aggregate(pipeline))
+        
+        # Calculate withdrawable amount for each user
+        for user in users:
+            user_id = user['_id']
+            user['withdrawableAmount'] = calculate_withdrawable_amount(user_id)
         
         print(f"Found {len(users)} users")
         if users:
@@ -1054,7 +1085,7 @@ def calculate_daily_roi_earnings():
         # Check if it's a weekend
         if current_time.weekday() in [5, 6]:
             print(f"Skipping ROI calculation for {current_time.date()} as it's a weekend")
-            return
+            return False
             
         print(f"Calculating ROI for date: {current_time.date()}")
         
@@ -2098,16 +2129,6 @@ def change_password():
     except Exception as e:
         print(f"Error in change_password: {str(e)}")
         return jsonify({'error': 'Failed to change password'}), 500
-
-# Health check endpoint for Render
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    try:
-        # Check MongoDB connection
-        db.command('ping')
-        return jsonify({'status': 'healthy', 'message': 'Service is running'}), 200
-    except Exception as e:
-        return jsonify({'status': 'unhealthy', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     from scheduler import start_scheduler

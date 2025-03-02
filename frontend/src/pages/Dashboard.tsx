@@ -35,7 +35,6 @@ export default function Dashboard() {
     queryKey: ['investments'],
     queryFn: async () => {
       const response = await investmentApi.getInvestments();
-      console.log('Raw investments response:', response);
       return response.investments || [];
     },
     staleTime: STALE_TIME,
@@ -69,7 +68,6 @@ export default function Dashboard() {
     queryKey: ['referralStats'],
     queryFn: async () => {
       const response = await referralApi.getStats();
-      console.log('Raw referral stats response:', response);
       return response || { counts: {}, earnings: { total: 0 } };
     },
     staleTime: STALE_TIME,
@@ -93,12 +91,10 @@ export default function Dashboard() {
 
   // Calculate total invested from active investments
   const totalInvested = React.useMemo(() => {
-    console.log('Calculating total invested from:', investments);
     return investments.reduce((acc: number, inv: any) => {
       // Only count active investments
       if (inv.status === 'active') {
         const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : inv.amount;
-        console.log('Processing investment:', { id: inv.id, amount, status: inv.status });
         return acc + (amount || 0);
       }
       return acc;
@@ -107,33 +103,18 @@ export default function Dashboard() {
 
   // Calculate total earnings from all investments
   const totalEarnings = React.useMemo(() => {
-    console.log('Calculating total earnings from:', investments);
     return investments.reduce((acc: number, inv: any) => {
       const profit = typeof inv.profit === 'string' ? parseFloat(inv.profit) : inv.profit;
-      console.log('Processing profit:', { id: inv.id, profit });
       return acc + (profit || 0);
     }, 0);
   }, [investments]);
 
   // Get referral earnings with proper fallback
   const referralEarnings = React.useMemo(() => {
-    console.log('Processing referral stats:', referralStats);
     const total = referralStats?.earnings?.total;
     const parsedTotal = typeof total === 'string' ? parseFloat(total) : total;
-    console.log('Referral earnings calculation:', { total, parsedTotal });
     return parsedTotal || 0;
   }, [referralStats]);
-
-  // Debug effect to monitor value changes
-  React.useEffect(() => {
-    console.log('Dashboard values updated:', {
-      totalInvested,
-      totalEarnings,
-      referralEarnings,
-      investmentsCount: investments.length,
-      hasReferralStats: !!referralStats
-    });
-  }, [totalInvested, totalEarnings, referralEarnings, investments, referralStats]);
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-background">

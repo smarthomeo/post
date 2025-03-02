@@ -34,12 +34,22 @@ interface User {
   createdAt: string;
   totalInvestments: number;
   referralCount: number;
+  withdrawableAmount: number;
+  activeInvestments: number;
 }
 
 export default function AdminDashboard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("users");
+
+  // Fetch admin stats
+  const { data: adminStats, isLoading: isStatsLoading } = useQuery({
+    queryKey: ['adminStats'],
+    queryFn: adminApi.getStats,
+    staleTime: STALE_TIME,
+    refetchOnWindowFocus: false,
+  });
 
   // Fetch all users
   const { data: users = [], isLoading: isUsersLoading } = useQuery({
@@ -77,9 +87,9 @@ export default function AdminDashboard() {
   // Calculate dashboard stats
   const stats = {
     totalUsers: users.length,
-    activeUsers: users.filter(user => user.isActive).length,
-    totalInvestments: users.reduce((sum, user) => sum + (user.totalInvestments || 0), 0),
-    totalTransactions: pendingTransactions.length,
+    activeUsers: users.filter(user => (user.activeInvestments || 0) > 0).length,
+    totalInvestments: adminStats?.totalInvestments || 0,
+    totalTransactions: adminStats?.totalTransactions || 0,
   };
 
   const handleApproveTransaction = async (transactionId: string) => {

@@ -13,6 +13,7 @@ interface Investment {
   dailyROI: number;
   createdAt: string;
   lastProfitUpdate: string;
+  status: string;
 }
 
 interface InvestmentHistory {
@@ -62,6 +63,11 @@ export default function PortfolioChart({
   isLoading = false,
   referralStats = { earnings: { total: 0 } }
 }: PortfolioChartProps) {
+  // This component handles expired investments as follows:
+  // 1. Total Investment only includes active investments (expired investments are excluded)
+  // 2. Total Earnings includes profits from all investments (including expired ones)
+  // 3. When an investment expires, it's removed from Total Investment but its profits remain in Total Earnings
+  
   if (isLoading) {
     return (
       <Card className="col-span-3">
@@ -97,83 +103,138 @@ export default function PortfolioChart({
   };
 
   const processChartData = (period: 'all' | '7d' | '30d' = 'all') => {
-    console.log('Processing chart data:', {
-      historyLength: history.length,
-      investments,
-      referralStats
-    });
-
-    // Get the earliest date from investments
-    const investmentDates = investments.map(inv => new Date(inv.createdAt).toISOString().split('T')[0]);
-    const earliestDate = investmentDates.length ? investmentDates.sort()[0] : new Date().toISOString().split('T')[0];
+    // Calculate the current totals that will be displayed at the top of the component
+    const currentTotalProfit = investments.reduce((sum, inv) => {
+      const profit = typeof inv.profit === 'string' ? parseFloat(inv.profit) : (inv.profit || 0);
+      return sum + profit;
+    }, 0);
     
-    // Initialize data with investment amounts
-    const initialData: { [key: string]: any } = {};
+    const currentTotalInvestment = investments.reduce((sum, inv) => {
+      if (inv.status === 'active') {
+        const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
+        return sum + amount;
+      }
+      return sum;
+    }, 0);
+    
+    const currentReferralEarnings = typeof referralStats.earnings.total === 'string' 
+      ? parseFloat(referralStats.earnings.total) 
+      : (referralStats.earnings.total || 0);
+
+    // Get the earliest date from investments and history
+    const investmentDates = investments.map(inv => new Date(inv.createdAt).toISOString().split('T')[0]);
+    const historyDates = history.map(item => item.date);
+    const allDates = [...investmentDates, ...historyDates];
+    const earliestDate = allDates.length ? allDates.sort()[0] : new Date().toISOString().split('T')[0];
+    
+    // Initialize data structure for daily changes
+    const dailyChanges: { [key: string]: any } = {};
+    
+    // Initialize dates for all investments
     investments.forEach(inv => {
       const date = new Date(inv.createdAt).toISOString().split('T')[0];
-      if (!initialData[date]) {
-        initialData[date] = {
+      if (!dailyChanges[date]) {
+        dailyChanges[date] = {
           date,
-          totalEarnings: 0,
-          totalInvestments: 0,
-          referralEarnings: 0
+          earningsChange: 0,
+          investmentsChange: 0,
+          referralChange: 0
         };
       }
-      const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
-      initialData[date].totalInvestments += amount;
+      
+      // Add investment amount only if active
+      if (inv.status === 'active') {
+        const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
+        dailyChanges[date].investmentsChange += amount;
+      }
     });
 
-    // Add history entries
-    const dailyData = history.reduce((acc: { [key: string]: any }, item) => {
+    // Process history entries to get daily changes
+    history.forEach(item => {
       const date = item.date;
-      if (!acc[date]) {
-        acc[date] = {
+      if (!dailyChanges[date]) {
+        dailyChanges[date] = {
           date,
-          totalEarnings: 0,
-          totalInvestments: 0,
-          referralEarnings: 0
+          earningsChange: 0,
+          investmentsChange: 0,
+          referralChange: 0
         };
       }
       
-      const amount = typeof item.amount === 'string' ? parseFloat(item.amount) : (item.amount || 0);
-      console.log('Processing history item:', { date, type: item.type, amount });
+      const itemAmount = typeof item.amount === 'string' ? parseFloat(item.amount) : (item.amount || 0);
       
       if (item.type === 'roi_earning') {
-        acc[date].totalEarnings += amount;
+        dailyChanges[date].earningsChange += itemAmount;
       } else if (item.type === 'investment') {
-        acc[date].totalInvestments += amount;
+        // Only add to investments if it's a new investment (not an expired one)
+        dailyChanges[date].investmentsChange += itemAmount;
+      } else if (item.type === 'investment_expired') {
+        // When an investment expires, we don't change anything here
+        // The active investments are already filtered in the initial calculation
       } else if (['referral_earning', 'daily_commission', 'one_time_reward'].includes(item.type)) {
-        acc[date].referralEarnings += amount;
+        dailyChanges[date].referralChange += itemAmount;
       }
-      
-      return acc;
-    }, initialData);
+    });
 
-    console.log('Daily data after grouping:', dailyData);
+    // If there are no referral entries in history but we have a total, distribute it
+    const hasReferralEntries = Object.values(dailyChanges).some(day => day.referralChange > 0);
+    if (!hasReferralEntries && currentReferralEarnings > 0) {
+      // Find dates with data to distribute referral earnings across
+      const sortedDates = Object.keys(dailyChanges).sort();
+      
+      if (sortedDates.length > 0) {
+        // If we have multiple dates, distribute earnings gradually
+        if (sortedDates.length >= 2) {
+          // Create a gradual increase in referral earnings
+          const dateCount = sortedDates.length;
+          const increment = currentReferralEarnings / dateCount;
+          
+          // Distribute earnings with increasing amounts
+          sortedDates.forEach((date, index) => {
+            // Add a portion of the earnings to each date, with more recent dates getting more
+            const portion = increment * (index + 1) / dateCount;
+            dailyChanges[date].referralChange += portion;
+          });
+        } else {
+          // If only one date, add all earnings to that date
+          const singleDate = sortedDates[0];
+          dailyChanges[singleDate].referralChange += currentReferralEarnings;
+        }
+      } else {
+        // If no dates with data, add today's date
+        const today = new Date().toISOString().split('T')[0];
+        if (!dailyChanges[today]) {
+          dailyChanges[today] = {
+            date: today,
+            earningsChange: 0,
+            investmentsChange: 0,
+            referralChange: 0
+          };
+        }
+        dailyChanges[today].referralChange += currentReferralEarnings;
+      }
+    }
 
     // Convert to array and sort by date
-    let chartData = Object.values(dailyData)
+    let sortedDays = Object.values(dailyChanges)
       .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Calculate cumulative totals
-    let runningTotalEarnings = 0;
-    let runningTotalInvestments = 0;
-    let runningReferralEarnings = 0;
-
-    chartData = chartData.map((item: any) => {
-      runningTotalEarnings += item.totalEarnings;
-      runningTotalInvestments += item.totalInvestments;
-      runningReferralEarnings += item.referralEarnings;
-
-      const dataPoint = {
-        date: formatDate(item.date),
-        totalEarnings: runningTotalEarnings,
-        totalInvestments: runningTotalInvestments,
-        referralEarnings: runningReferralEarnings
-      };
+    let runningEarnings = 0;
+    let runningInvestments = 0;
+    let runningReferrals = 0;
+    
+    let chartData = sortedDays.map((day: any) => {
+      runningEarnings += day.earningsChange;
+      runningInvestments += day.investmentsChange;
+      runningReferrals += day.referralChange;
       
-      console.log('Cumulative data point:', dataPoint);
-      return dataPoint;
+      return {
+        date: formatDate(day.date),
+        totalEarnings: runningEarnings,
+        totalInvestments: runningInvestments,
+        referralEarnings: runningReferrals
+      };
     });
 
     // Filter based on period
@@ -183,49 +244,75 @@ export default function PortfolioChart({
       chartData = chartData.slice(-30);
     }
 
-    // If there's no data for the current day, add current totals
-    const lastDate = chartData[chartData.length - 1]?.date;
+    // Add today's data point with the current totals
     const today = formatDate(new Date().toISOString());
+    const lastDate = chartData.length > 0 ? chartData[chartData.length - 1].date : null;
     
     if (lastDate !== today) {
-      const currentTotals = {
+      // Add a new data point for today
+      chartData.push({
         date: today,
-        totalEarnings: investments.reduce((sum, inv) => {
-          const profit = typeof inv.profit === 'string' ? parseFloat(inv.profit) : (inv.profit || 0);
-          return sum + profit;
-        }, 0),
-        totalInvestments: investments.reduce((sum, inv) => {
-          const amount = typeof inv.amount === 'string' ? parseFloat(inv.amount) : (inv.amount || 0);
-          return sum + amount;
-        }, 0),
-        referralEarnings: typeof referralStats.earnings.total === 'string' 
-          ? parseFloat(referralStats.earnings.total) 
-          : (referralStats.earnings.total || 0)
-      };
-      
-      console.log('Adding current day totals:', currentTotals);
-      chartData.push(currentTotals);
+        totalEarnings: currentTotalProfit,
+        totalInvestments: currentTotalInvestment,
+        referralEarnings: currentReferralEarnings
+      });
+    } else {
+      // Update the last data point to match current totals
+      const lastPoint = chartData[chartData.length - 1];
+      lastPoint.totalEarnings = currentTotalProfit;
+      lastPoint.totalInvestments = currentTotalInvestment;
+      lastPoint.referralEarnings = currentReferralEarnings;
     }
 
-    // Ensure referral earnings are included in the last data point
-    if (chartData.length > 0) {
-      const lastPoint = chartData[chartData.length - 1];
-      const referralTotal = typeof referralStats.earnings.total === 'string' 
-        ? parseFloat(referralStats.earnings.total) 
-        : (referralStats.earnings.total || 0);
+    // Ensure we have at least two data points for a better chart
+    if (chartData.length === 1) {
+      // Create a data point for the day before
+      const oneDayBefore = new Date();
+      oneDayBefore.setDate(oneDayBefore.getDate() - 1);
+      const previousDay = formatDate(oneDayBefore.toISOString());
       
-      if (lastPoint.referralEarnings !== referralTotal) {
-        lastPoint.referralEarnings = referralTotal;
+      chartData.unshift({
+        date: previousDay,
+        totalEarnings: 0,
+        totalInvestments: 0,
+        referralEarnings: 0
+      });
+    }
+
+    // Ensure the final data point matches the current totals
+    if (chartData.length > 0) {
+      const lastDataPoint = chartData[chartData.length - 1];
+      
+      // Check if there's a discrepancy between calculated and actual totals
+      const calculatedTotal = lastDataPoint.totalEarnings + lastDataPoint.referralEarnings;
+      const actualTotal = currentTotalProfit + currentReferralEarnings;
+      
+      if (Math.abs(calculatedTotal - actualTotal) > 0.01) {
+        // Adjust the last data point to match the current totals
+        lastDataPoint.totalEarnings = currentTotalProfit;
+        lastDataPoint.referralEarnings = currentReferralEarnings;
       }
     }
 
-    console.log('Final chart data:', chartData);
     return chartData;
   };
 
   const chartData = processChartData();
-  const totalInvestment = investments.reduce((sum, inv) => sum + inv.amount, 0);
-  const totalProfit = investments.reduce((sum, inv) => sum + inv.profit, 0);
+  const chartData7d = processChartData('7d');
+  const chartData30d = processChartData('30d');
+  
+  const totalInvestment = investments.reduce((sum, inv) => {
+    // Only count active investments
+    if (inv.status === 'active') {
+      return sum + (typeof inv.amount === 'string' ? parseFloat(inv.amount) : inv.amount);
+    }
+    return sum;
+  }, 0);
+  const totalProfit = investments.reduce((sum, inv) => {
+    // Include profits from all investments, regardless of status
+    const profit = typeof inv.profit === 'string' ? parseFloat(inv.profit) : (inv.profit || 0);
+    return sum + profit;
+  }, 0);
 
   return (
     <Card className="col-span-3">
@@ -237,7 +324,7 @@ export default function PortfolioChart({
             <p className="text-base sm:text-xl font-bold truncate">{formatCurrency(totalInvestment)}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs sm:text-sm text-muted-foreground truncate">Total Earnings</p>
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">ROI Earnings</p>
             <p className={`text-base sm:text-xl font-bold truncate ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(totalProfit)}
             </p>
@@ -258,13 +345,13 @@ export default function PortfolioChart({
             <TabsTrigger value="7d">7 Days</TabsTrigger>
           </TabsList>
           <TabsContent value="all">
-            <ChartContent data={processChartData('all')} />
+            <ChartContent data={chartData} />
           </TabsContent>
           <TabsContent value="30d">
-            <ChartContent data={processChartData('30d')} />
+            <ChartContent data={chartData30d} />
           </TabsContent>
           <TabsContent value="7d">
-            <ChartContent data={processChartData('7d')} />
+            <ChartContent data={chartData7d} />
           </TabsContent>
         </Tabs>
       </CardContent>

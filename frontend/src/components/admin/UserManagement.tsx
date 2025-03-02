@@ -32,6 +32,8 @@ interface User {
   createdAt: string;
   totalInvestments: number | undefined;
   referralCount: number;
+  withdrawableAmount: number | undefined;
+  activeInvestments: number | undefined;
 }
 
 interface UserManagementProps {
@@ -115,6 +117,7 @@ export function UserManagement({ users, isLoading, onDeleteUser, onResetPassword
               <TableHead>Status</TableHead>
               <TableHead>Balance</TableHead>
               <TableHead>Investments</TableHead>
+              <TableHead>Withdrawable</TableHead>
               <TableHead>Referrals</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -133,8 +136,8 @@ export function UserManagement({ users, isLoading, onDeleteUser, onResetPassword
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-col gap-1">
-                    <Badge variant={user.isActive ? "default" : "secondary"}>
-                      {user.isActive ? "Active" : "Inactive"}
+                    <Badge variant={(user.activeInvestments || 0) > 0 ? "default" : "secondary"}>
+                      {(user.activeInvestments || 0) > 0 ? "Active" : "Inactive"}
                     </Badge>
                     <Badge variant={user.isVerified ? "default" : "outline"}>
                       {user.isVerified ? "Verified" : "Unverified"}
@@ -143,6 +146,7 @@ export function UserManagement({ users, isLoading, onDeleteUser, onResetPassword
                 </TableCell>
                 <TableCell>{formatCurrency(user.balance)}</TableCell>
                 <TableCell>{formatCurrency(user.totalInvestments)}</TableCell>
+                <TableCell>{formatCurrency(user.withdrawableAmount)}</TableCell>
                 <TableCell>{user.referralCount}</TableCell>
                 <TableCell>
                   <div className="flex flex-col gap-2">

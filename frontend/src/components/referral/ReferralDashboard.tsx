@@ -47,20 +47,20 @@ export function ReferralDashboard() {
   const { data: stats, isLoading, error } = useQuery({
     queryKey: ['referralStats'],
     queryFn: async () => {
-      const response = await referralApi.getStats();
-      console.log('Referral stats response:', response);
-      return response as ReferralStats;
+      try {
+        const response = await referralApi.getStats();
+        return response as ReferralStats;
+      } catch (err) {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to load referral stats',
+        });
+        throw err;
+      }
     },
     staleTime: STALE_TIME,
-    refetchOnWindowFocus: false,
-    onError: (err: any) => {
-      console.error('Referral stats error:', err);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to load referral stats',
-      });
-    }
+    refetchOnWindowFocus: false
   });
 
   const handleCopyLink = async () => {

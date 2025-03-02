@@ -101,7 +101,6 @@ function TransactionTable({ transactions }: TransactionTableProps) {
               <TableHead className="w-[100px] hidden sm:table-cell">Date</TableHead>
               <TableHead>Type</TableHead>
               <TableHead className="text-right">Amount</TableHead>
-              <TableHead className="hidden sm:table-cell">Description</TableHead>
               <TableHead className="text-right">Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -118,9 +117,6 @@ function TransactionTable({ transactions }: TransactionTableProps) {
                   <span className={transaction.type === 'deposit' ? 'text-green-600' : 'text-red-600'}>
                     {formatAmount(transaction.amount, transaction.type)}
                   </span>
-                </TableCell>
-                <TableCell className="hidden sm:table-cell text-muted-foreground">
-                  {transaction.description}
                 </TableCell>
                 <TableCell className="text-right">
                   <Badge 

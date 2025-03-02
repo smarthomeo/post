@@ -24,13 +24,26 @@ def log_job_execution(job_name):
         return wrapper
     return decorator
 
+@log_job_execution("Daily ROI Calculation")
+def run_daily_roi():
+    """Run daily ROI calculation and then trigger commission calculation"""
+    try:
+        # First calculate ROI
+        roi_success = calculate_daily_roi_earnings()
+        
+        # If ROI calculation was successful, run commission calculation
+        if roi_success:
+            logger.info("ROI calculation successful, now running commission calculation...")
+            run_daily_commission()
+        else:
+            logger.error("ROI calculation failed, skipping commission calculation")
+    except Exception as e:
+        logger.error(f"Error in run_daily_roi: {str(e)}")
+        raise
+
 @log_job_execution("Daily Commission Calculation")
 def run_daily_commission():
     calculate_daily_referral_commissions()
-
-@log_job_execution("Daily ROI Calculation")
-def run_daily_roi():
-    calculate_daily_roi_earnings()
 
 def start_scheduler():
     """Initialize and start the APScheduler for daily tasks"""
@@ -43,31 +56,17 @@ def start_scheduler():
         eat_time = datetime.now(pytz.timezone('Africa/Nairobi'))
         logger.info(f"Current time in EAT: {eat_time}")
         
-        # Schedule both jobs to run at midnight EAT on weekdays
-        scheduler.add_job(
-            run_daily_commission,
-            trigger=CronTrigger(
-                hour=9,
-                minute=47,
-                day_of_week='mon-fri',
-                timezone=pytz.timezone('Africa/Nairobi')
-            ),
-            id='daily_commissions',
-            name='Daily Commission Calculation',
-            replace_existing=True,
-            misfire_grace_time=3600  # Allow job to run up to 1 hour late
-        )
-        
+        # Schedule only the ROI job - it will trigger the commission job after completion
         scheduler.add_job(
             run_daily_roi,
             trigger=CronTrigger(
-                hour=9,
-                minute=47,
+                hour=00,
+                minute=00,
                 day_of_week='mon-fri',
                 timezone=pytz.timezone('Africa/Nairobi')
             ),
             id='daily_roi',
-            name='Daily ROI Calculation',
+            name='Daily ROI and Commission Calculation',
             replace_existing=True,
             misfire_grace_time=3600  # Allow job to run up to 1 hour late
         )
