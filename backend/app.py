@@ -1222,6 +1222,7 @@ def register():
             'phone': phone,
             'password': bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
             'balance': 0,
+            'signupBonus': 100,  # Add 100 KSH signup bonus to withdrawable amount
             'referralCode': new_referral_code,
             'referredBy': ObjectId(referrer['_id']) if referrer else None,
             'isActive': True,
@@ -1238,6 +1239,7 @@ def register():
             'username': username,
             'phone': phone,
             'balance': 0,
+            'withdrawable': 100,  # Include the signup bonus in the response
             'referralCode': new_referral_code,
             'isActive': True,
             'createdAt': current_time.isoformat(),
@@ -1333,7 +1335,7 @@ def login():
         return jsonify({'error': 'Login failed'}), 500
 
 def calculate_withdrawable_amount(user_id, exclude_transaction_id=None):
-    """Calculate total withdrawable amount (ROI + referral earnings) for a user"""
+    """Calculate total withdrawable amount (ROI + referral earnings + signup bonus) for a user"""
     try:
         # Get only active investments and their profits
         investments = list(db.investments.find({
@@ -1352,6 +1354,10 @@ def calculate_withdrawable_amount(user_id, exclude_transaction_id=None):
         ])
         
         total_referrals = next(referral_rewards, {'total': 0})['total']
+        
+        # Get user's signup bonus (if any)
+        user = db.users.find_one({'_id': ObjectId(user_id)})
+        signup_bonus = float(user.get('signupBonus', 0)) if user else 0
         
         # Build withdrawal query
         withdrawal_query = {
@@ -1380,8 +1386,8 @@ def calculate_withdrawable_amount(user_id, exclude_transaction_id=None):
         
         total_withdrawals = next(withdrawals, {'total': 0})['total']
         
-        # Calculate final withdrawable amount
-        withdrawable = float(total_roi + total_referrals - total_withdrawals)
+        # Calculate final withdrawable amount (now including signup bonus)
+        withdrawable = float(total_roi + total_referrals + signup_bonus - total_withdrawals)
         return max(withdrawable, 0)  # Ensure we don't return negative values
         
     except Exception as e:
