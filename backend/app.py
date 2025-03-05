@@ -47,18 +47,16 @@ if not os.path.exists(session_dir):
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SESSION_FILE_DIR'] = session_dir
 app.config['SESSION_COOKIE_NAME'] = 'session'
-app.config['SESSION_COOKIE_DOMAIN'] = None  # Let browser handle domain in development
-app.config['SESSION_COOKIE_PATH'] = '/'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when using HTTPS
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # More compatible than 'None'
+app.config['SESSION_COOKIE_SECURE'] = True  # Enable secure cookies
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # Required for cross-site cookies
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 app.secret_key = os.environ.get('JWT_SECRET', 'secure-auth-glass-secret-key-2025')
 
-# Override domain in production
+# Set cookie domain based on environment
 if os.getenv('FLASK_ENV') == 'production':
-    app.config['SESSION_COOKIE_DOMAIN'] = 'https://pos-backend-fhqc.onrender.com'
+    app.config['SESSION_COOKIE_DOMAIN'] = '.onrender.com'  # Allow cookies across Render subdomains
 
 Session(app)
 
@@ -93,6 +91,10 @@ def after_request(response):
         response.headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS'
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
+        
+        # Ensure cookie settings
+        if 'Set-Cookie' in response.headers:
+            response.headers['Set-Cookie'] = response.headers['Set-Cookie'].replace('SameSite=Lax', 'SameSite=None; Secure')
     
     return response
 
@@ -1293,9 +1295,15 @@ def login():
             return jsonify({'error': 'Invalid credentials'}), 401
 
         try:
+            # Clear any existing session
             session.clear()
+            # Set user_id in session
             session['user_id'] = str(user['_id'])
+            # Make session permanent
             session.permanent = True
+            # Force save the session
+            session.modified = True
+            
             print("\n=== Session After Login ===")
             print(f"Session data: {dict(session)}")
             print(f"Session ID: {session.sid if hasattr(session, 'sid') else 'No SID'}")
