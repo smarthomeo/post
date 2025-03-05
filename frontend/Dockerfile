@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:20-slim as build
 
 WORKDIR /app
 
@@ -7,14 +7,16 @@ RUN npm install
 
 COPY . .
 
-ARG VITE_BACKEND_URL
-ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
-
+# Build the app
 RUN npm run build
 
+# Production stage
 FROM nginx:alpine
 
-COPY --from=0 /app/dist /usr/share/nginx/html
+# Copy the built files
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
