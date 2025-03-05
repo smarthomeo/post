@@ -1,4 +1,13 @@
-const API_URL = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000') + '/api';
+const getApiUrl = () => {
+    const url = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    // Ensure HTTPS for production URLs
+    if (url.includes('render.com') || url.includes('.cc') || url.includes('.com')) {
+        return url.replace('http://', 'https://') + '/api';
+    }
+    return url + '/api';
+};
+
+const API_URL = getApiUrl();
 
 interface ApiOptions {
   method?: string;

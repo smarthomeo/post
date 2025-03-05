@@ -66,7 +66,11 @@ Session(app)
 CORS(app, 
      resources={
          r"/api/*": {
-             "origins": [os.environ.get('FRONTEND_URL', 'http://localhost:5173')],
+             "origins": [
+                 os.environ.get('FRONTEND_URL', 'http://localhost:5173'),
+                 'https://pos-t7fi.onrender.com',
+                 'https://post-t7fi.onrender.com'
+             ],
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
              "supports_credentials": True,
@@ -78,25 +82,17 @@ CORS(app,
 # Update after_request handler
 @app.after_request
 def after_request(response):
-    frontend_url = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-    
-    # Remove any existing CORS headers to prevent duplication
-    response.headers.pop('Access-Control-Allow-Origin', None)
-    response.headers.pop('Access-Control-Allow-Headers', None)
-    response.headers.pop('Access-Control-Allow-Methods', None)
-    response.headers.pop('Access-Control-Allow-Credentials', None)
-    response.headers.pop('Access-Control-Max-Age', None)
-    
-    # Add CORS headers
-    response.headers['Access-Control-Allow-Origin'] = frontend_url
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
-    
-    # Log response headers for debugging
-    print("\n=== Response Headers ===")
-    print(dict(response.headers))
+    frontend_url = request.headers.get('Origin')
+    if frontend_url in [
+        os.environ.get('FRONTEND_URL', 'http://localhost:5173'),
+        'https://pos-t7fi.onrender.com',
+        'https://post-t7fi.onrender.com'
+    ]:
+        response.headers['Access-Control-Allow-Origin'] = frontend_url
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, PUT, POST, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Max-Age'] = '86400'  # 24 hours
     
     return response
 
