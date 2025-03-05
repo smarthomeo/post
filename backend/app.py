@@ -2136,6 +2136,10 @@ def change_password():
         print(f"Error in change_password: {str(e)}")
         return jsonify({'error': 'Failed to change password'}), 500
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
 if __name__ == '__main__':
     from scheduler import start_scheduler
     scheduler = start_scheduler()

@@ -1,0 +1,37 @@
+services:
+  - type: pserv
+    name: pos-database
+    env: docker
+    dockerfilePath: ./database/Dockerfile
+    disk:
+      name: data
+      mountPath: /data/db
+      sizeGB: 10
+    plan: starter
+    autoDeploy: false
+
+  - type: web
+    name: pos-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          name: pos-database
+          type: pserv
+          property: connectionString
+      - key: PORT
+        value: 5000
+    autoDeploy: false
+
+  - type: web
+    name: pos-frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    plan: free
+    envVars:
+      - key: VITE_BACKEND_URL
+        value: https://pos-backend.onrender.com
+    autoDeploy: false 
