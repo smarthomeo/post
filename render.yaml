@@ -21,7 +21,12 @@ services:
         fromService:
           name: pos-database
           type: pserv
-          property: connectionString
+          property: hostport
+      - key: MONGODB_URI
+        fromService:
+          name: pos-database
+          type: pserv
+          envVarKey: MONGODB_URL
       - key: PORT
         value: 5000
     autoDeploy: false
