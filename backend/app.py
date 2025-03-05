@@ -58,7 +58,7 @@ app.secret_key = os.environ.get('JWT_SECRET', 'secure-auth-glass-secret-key-2025
 
 # Override domain in production
 if os.getenv('FLASK_ENV') == 'production':
-    app.config['SESSION_COOKIE_DOMAIN'] = 'blueskyafrika.cc'
+    app.config['SESSION_COOKIE_DOMAIN'] = 'https://post-t7fi.onrender.com'
 
 Session(app)
 
